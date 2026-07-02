@@ -54,35 +54,56 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> pickInventory() async {
-    final type = XTypeGroup(
-      label: "Files",
-      extensions: ["xlsx", "pdf"],
-    );
+    try {
+      final type = XTypeGroup(
+        label: "Files",
+        extensions: ["xlsx", "pdf"],
+      );
 
-    final xfile = await openFile(acceptedTypeGroups: [type]);
+      final xfile = await openFile(acceptedTypeGroups: [type]);
 
-    if (xfile == null) return;
+      if (xfile == null) return;
 
-    inventoryRows = await processFile(File(xfile.path));
-    inventoryFileName = xfile.name;
+      inventoryRows = await processFile(File(xfile.path));
+      inventoryFileName = xfile.name;
 
-    setState(() {});
+      setState(() {
+        statusText = "Missing Items Loaded Successfully";
+      });
+    } catch (e) {
+      setState(() {
+        statusText = e.toString();
+      });
+    }
   }
 
   Future<void> pickOrder() async {
-    final type = XTypeGroup(
-      label: "Files",
-      extensions: ["xlsx", "pdf"],
-    );
+    try {
+      final type = XTypeGroup(
+        label: "Files",
+        extensions: ["xlsx", "pdf"],
+      );
 
-    final xfile = await openFile(acceptedTypeGroups: [type]);
+      final xfile = await openFile(acceptedTypeGroups: [type]);
 
-    if (xfile == null) return;
+      if (xfile == null) return;
 
-    orderRows = await processFile(File(xfile.path));
-    orderFileName = xfile.name;
+      orderRows = await processFile(File(xfile.path));
+      orderFileName = xfile.name;
 
-    setState(() {});
+
+      setState(() {
+        statusText = "Store List  Loaded Successfully";
+      });
+    } catch (e) {
+      setState(() {
+        statusText = e.toString();
+      });
+    }
+
+
+
+
   }
 
   Future<void> generateOrder() async {
@@ -98,14 +119,27 @@ class _OrderScreenState extends State<OrderScreen> {
     });
 
     List<String> storeItems = [];
+    print("ORDER ROWS: ${orderRows.length}");
+    print("INVENTORY ROWS: ${inventoryRows.length}");
+    print("STORE ITEMS: ${storeItems.length}");
 
     for (int i = 1; i < orderRows.length; i++) {
       final row = orderRows[i];
 
       if (row.isEmpty) continue;
 
-      String item = Matcher.normalize(row[0]);
-      item = item.replaceAll(RegExp(r'\d+'), '').trim();
+      String item = "";
+
+      for (final cell in row) {
+        final cleaned = Matcher.normalize(cell)
+            .replaceAll(RegExp(r'\d+'), '')
+            .trim();
+
+        if (cleaned.isNotEmpty) {
+          item = cleaned;
+          break;
+        }
+      }
 
       if (item.isNotEmpty) {
         storeItems.add(item);
@@ -167,9 +201,7 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Done ✔";
     });
   }
-  // =========================
-  // 💾 DOWNLOAD (WINDOWS SAFE)
-  // =========================
+
   Future<void> downloadFile(Uint8List bytes) async {
     final location = await getSaveLocation(
       suggestedName: "final_order.xlsx",
@@ -177,17 +209,22 @@ class _OrderScreenState extends State<OrderScreen> {
 
     if (location == null) return;
 
-    final file = File(location.path);
+    final filePath = location.path.endsWith('.xlsx')
+        ? location.path
+        : '${location.path}.xlsx';
+
+    final file = File(filePath);
     await file.writeAsBytes(bytes);
 
     setState(() {
       statusText = "Saved Successfully ✔";
     });
+
+
+    await Process.run('cmd', ['/c', 'start', '', filePath]);
   }
 
-  // =========================
-  // 📄 PDF → CSV (Windows only)
-  // =========================
+
   Future<File> convertPdfToCsv(File pdfFile) async {
     final outputPath = "${pdfFile.path}.csv";
 
@@ -196,26 +233,28 @@ class _OrderScreenState extends State<OrderScreen> {
       [
         "-jar",
         "tools/tabula.jar",
-        "--pages",
+        "-p",
         "all",
-        "--format",
+        "-f",
         "CSV",
-        pdfFile.path,
-        "--outfile",
+        "-o",
         outputPath,
+        pdfFile.path,
       ],
     );
 
+    print("STDOUT: ${result.stdout}");
+    print("STDERR: ${result.stderr}");
+
     if (result.exitCode != 0) {
-      throw Exception("PDF conversion failed: ${result.stderr}");
+      throw Exception(result.stderr.toString());
     }
 
     return File(outputPath);
   }
 
-  // =========================
-  // 📄 CSV READER
-  // =========================
+
+
   Future<List<List<String>>> csvToRows(File file) async {
     final text = await file.readAsString();
 
@@ -229,9 +268,6 @@ class _OrderScreenState extends State<OrderScreen> {
         .toList();
   }
 
-  // =========================
-  // 🖥️ UI
-  // =========================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -248,7 +284,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   child: ElevatedButton(
                     onPressed: pickInventory,
                     child: Text(
-                      inventoryFileName ?? "Upload Inventory",
+                      inventoryFileName ?? "Upload Missing Item",
                     ),
                   ),
                 ),
@@ -259,7 +295,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   child: ElevatedButton(
                     onPressed: pickOrder,
                     child: Text(
-                      orderFileName ?? "Upload Order",
+                      orderFileName ?? "Upload List",
                     ),
                   ),
                 ),
