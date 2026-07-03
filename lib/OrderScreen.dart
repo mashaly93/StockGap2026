@@ -118,32 +118,35 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Processing...";
     });
 
-    List<String> storeItems = [];
-    print("ORDER ROWS: ${orderRows.length}");
-    print("INVENTORY ROWS: ${inventoryRows.length}");
-    print("STORE ITEMS: ${storeItems.length}");
+    List<Map<String, String>> storeItems = [];
+
 
     for (int i = 1; i < orderRows.length; i++) {
       final row = orderRows[i];
 
       if (row.isEmpty) continue;
 
-      String item = "";
+      String original = "";
 
-      for (final cell in row) {
-        final cleaned = Matcher.normalize(cell)
-            .replaceAll(RegExp(r'\d+'), '')
-            .trim();
+// تجاهل الرقم الأول (code)
+      for (int i = 1; i < row.length; i++) {
+        final cell = row[i].trim();
 
-        if (cleaned.isNotEmpty) {
-          item = cleaned;
+        // وقف عند أول رقم (بداية الأسعار)
+        if (RegExp(r'^\d+(\.\d+)?$').hasMatch(cell)) {
           break;
         }
+
+        original += "$cell ";
       }
 
-      if (item.isNotEmpty) {
-        storeItems.add(item);
-      }
+      original = original.trim();
+      if (original.isEmpty) continue;
+
+      storeItems.add({
+        "original": original,
+        "normalized": Matcher.normalize(original),
+      });
     }
 
     final excel = Excel.createExcel();
@@ -168,28 +171,29 @@ class _OrderScreenState extends State<OrderScreen> {
 
       if (row.isEmpty) continue;
 
-      String item = Matcher.normalize(row[0]);
-      item = item.replaceAll(RegExp(r'\d+'), '').trim();
+      final originalItem = row[0].trim();
+      final normalizedItem = Matcher.normalize(originalItem);
 
       int qty = 0;
 
       if (row.length > 1) {
-        qty =
-            int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), "")) ?? 0;
+        qty = int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), "")) ?? 0;
       }
 
-      final result = Matcher.findBestMatch(item, storeItems);
+      final result = Matcher.findBestMatch(normalizedItem, storeItems);
+
+
 
       if (result.matchedItem != null && result.score >= 60) {
         resultSheet.appendRow([
-          TextCellValue(item),
+          TextCellValue(originalItem),
           TextCellValue(qty.toString()),
           TextCellValue(result.matchedItem!),
           TextCellValue("${result.score.toStringAsFixed(0)}%"),
         ]);
       } else {
         missingSheet.appendRow([
-          TextCellValue(item),
+          TextCellValue(originalItem),
           TextCellValue(qty.toString()),
         ]);
       }
@@ -284,7 +288,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   child: ElevatedButton(
                     onPressed: pickInventory,
                     child: Text(
-                      inventoryFileName ?? "Upload Missing Item",
+                      inventoryFileName ?? "Upload Missing Items",
                     ),
                   ),
                 ),

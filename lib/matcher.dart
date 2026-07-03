@@ -21,6 +21,35 @@ class Matcher {
     "box",
     "with",
     "the",
+
+    // units
+    "mg",
+    "mcg",
+    "g",
+    "gm",
+    "kg",
+    "ml",
+    "l",
+
+    // dosage forms
+    "tab",
+    "tabs",
+    "tablet",
+    "tablets",
+    "cap",
+    "caps",
+    "capsule",
+    "capsules",
+    "syrup",
+    "cream",
+    "ointment",
+    "gel",
+    "drops",
+    "spray",
+    "amp",
+    "ampoule",
+    "inj",
+    "injection",
   };
 
   static const Map<String, String> replacements = {
@@ -76,6 +105,11 @@ class Matcher {
         .where((w) => w.isNotEmpty && !ignoredWords.contains(w))
         .toList();
   }
+  static String getCoreName(String text) {
+    final words = getWords(text);
+
+    return words.isNotEmpty ? words.first : "";
+  }
 
   // ---------------- NUMBERS ----------------
   static Set<String> getNumbers(String text) {
@@ -99,21 +133,21 @@ class Matcher {
     final storeWords = getWords(storeItem);
 
     if (orderWords.isEmpty || storeWords.isEmpty) return 0;
-
-    // 🔴 شرط أساسي: أول كلمة لازم تتطابق
     if (orderWords.first != storeWords.first) {
       return 0;
     }
 
-    double score = 50;
-
     final orderSet = orderWords.toSet();
     final storeSet = storeWords.toSet();
 
-    // الكلمات المشتركة
     final common = orderSet.intersection(storeSet);
-    score += common.length * 10;
 
+// لازم كلمتين على الأقل
+    if (common.isEmpty) {
+      return 0;
+    }
+
+    double score = common.length * 20;
     // الأرقام
     final orderNums = getNumbers(orderItem);
     final storeNums = getNumbers(storeItem);
@@ -148,17 +182,17 @@ class Matcher {
   // ---------------- BEST MATCH ----------------
   static MatchResult findBestMatch(
       String orderItem,
-      List<String> storeItems,
+      List<Map<String, String>> storeItems,
       ) {
     String? bestItem;
     double bestScore = 0;
 
     for (final item in storeItems) {
-      final score = similarity(orderItem, item);
+      final score = similarity(orderItem, item["normalized"]!);
 
       if (score > bestScore) {
         bestScore = score;
-        bestItem = item;
+        bestItem = item["original"]!;
       }
     }
 
