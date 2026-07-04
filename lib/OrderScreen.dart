@@ -55,10 +55,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> pickInventory() async {
     try {
-      final type = XTypeGroup(
-        label: "Files",
-        extensions: ["xlsx", "pdf"],
-      );
+      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
 
       final xfile = await openFile(acceptedTypeGroups: [type]);
 
@@ -79,10 +76,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> pickOrder() async {
     try {
-      final type = XTypeGroup(
-        label: "Files",
-        extensions: ["xlsx", "pdf"],
-      );
+      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
 
       final xfile = await openFile(acceptedTypeGroups: [type]);
 
@@ -90,7 +84,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
       orderRows = await processFile(File(xfile.path));
       orderFileName = xfile.name;
-
 
       setState(() {
         statusText = "Store List  Loaded Successfully";
@@ -100,10 +93,6 @@ class _OrderScreenState extends State<OrderScreen> {
         statusText = e.toString();
       });
     }
-
-
-
-
   }
 
   Future<void> generateOrder() async {
@@ -120,7 +109,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
     List<Map<String, String>> storeItems = [];
 
-
     for (int i = 1; i < orderRows.length; i++) {
       final row = orderRows[i];
 
@@ -128,11 +116,9 @@ class _OrderScreenState extends State<OrderScreen> {
 
       String original = "";
 
-// تجاهل الرقم الأول (code)
-      for (int i = 1; i < row.length; i++) {
-        final cell = row[i].trim();
+      for (int j = 1; j < row.length; j++) {
+        final cell = row[j].trim();
 
-        // وقف عند أول رقم (بداية الأسعار)
         if (RegExp(r'^\d+(\.\d+)?$').hasMatch(cell)) {
           break;
         }
@@ -150,7 +136,6 @@ class _OrderScreenState extends State<OrderScreen> {
     }
 
     final excel = Excel.createExcel();
-
     final resultSheet = excel['Sheet1'];
     final missingSheet = excel['Missing'];
 
@@ -159,12 +144,45 @@ class _OrderScreenState extends State<OrderScreen> {
       TextCellValue("Qty"),
       TextCellValue("Matched Item"),
       TextCellValue("Score"),
+      TextCellValue("Buy Price"),
+      TextCellValue("Sell Price"),
+      TextCellValue("Buy Total"),
+      TextCellValue("Sell Total"),
     ]);
 
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-    ]);
+    missingSheet.appendRow([TextCellValue("Item"), TextCellValue("Qty")]);
+
+    // 🔥 أهم جزء: استخراج أسعار آمن 100%
+    List<double> extractPrices(List<String> row) {
+      var prices = <double>[];
+
+      // ناخد آخر 4 أعمدة فقط (تجاهل الاسم والكمية)
+      final start = row.length - 4;
+
+      for (int i = start; i < row.length; i++) {
+        if (i < 0) continue;
+
+        final cell = row[i]
+            .toString()
+            .replaceAll(',', '')
+            .replaceAll(RegExp(r'[^0-9.]'), '')
+            .trim();
+
+        final value = double.tryParse(cell);
+
+        if (value == null) continue;
+
+        // فلتر منطقي يمنع MG أو قيم غير منطقية
+        if (value <= 0 || value > 100000) continue;
+
+        prices.add(value);
+      }
+
+      prices = prices.toSet().toList();
+      prices.sort();
+
+      return prices;
+    }
 
     for (int i = 1; i < inventoryRows.length; i++) {
       final row = inventoryRows[i];
@@ -174,15 +192,28 @@ class _OrderScreenState extends State<OrderScreen> {
       final originalItem = row[0].trim();
       final normalizedItem = Matcher.normalize(originalItem);
 
+      // ✅ الكمية
       int qty = 0;
-
       if (row.length > 1) {
-        qty = int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), "")) ?? 0;
+        qty = int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       }
 
+      // ✅ الأسعار
+      final prices = extractPrices(row);
+
+      double buyPrice = 0;
+      double sellPrice = 0;
+
+      if (prices.isNotEmpty) {
+        buyPrice = prices.first;
+        sellPrice = prices.length > 1 ? prices.last : prices.first;
+      }
+
+      final buyTotal = buyPrice * qty;
+      final sellTotal = sellPrice * qty;
+
+      // 🔹 المطابقة
       final result = Matcher.findBestMatch(normalizedItem, storeItems);
-
-
 
       if (result.matchedItem != null && result.score >= 60) {
         resultSheet.appendRow([
@@ -190,6 +221,10 @@ class _OrderScreenState extends State<OrderScreen> {
           TextCellValue(qty.toString()),
           TextCellValue(result.matchedItem!),
           TextCellValue("${result.score.toStringAsFixed(0)}%"),
+          TextCellValue(buyPrice.toStringAsFixed(3)),
+          TextCellValue(sellPrice.toStringAsFixed(3)),
+          TextCellValue(buyTotal.toStringAsFixed(3)),
+          TextCellValue(sellTotal.toStringAsFixed(3)),
         ]);
       } else {
         missingSheet.appendRow([
@@ -207,9 +242,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> downloadFile(Uint8List bytes) async {
-    final location = await getSaveLocation(
-      suggestedName: "final_order.xlsx",
-    );
+    final location = await getSaveLocation(suggestedName: "final_order.xlsx");
 
     if (location == null) return;
 
@@ -224,28 +257,23 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Saved Successfully ✔";
     });
 
-
     await Process.run('cmd', ['/c', 'start', '', filePath]);
   }
-
 
   Future<File> convertPdfToCsv(File pdfFile) async {
     final outputPath = "${pdfFile.path}.csv";
 
-    final result = await Process.run(
-      "java",
-      [
-        "-jar",
-        "tools/tabula.jar",
-        "-p",
-        "all",
-        "-f",
-        "CSV",
-        "-o",
-        outputPath,
-        pdfFile.path,
-      ],
-    );
+    final result = await Process.run("java", [
+      "-jar",
+      "tools/tabula.jar",
+      "-p",
+      "all",
+      "-f",
+      "CSV",
+      "-o",
+      outputPath,
+      pdfFile.path,
+    ]);
 
     print("STDOUT: ${result.stdout}");
     print("STDERR: ${result.stderr}");
@@ -257,77 +285,233 @@ class _OrderScreenState extends State<OrderScreen> {
     return File(outputPath);
   }
 
-
-
   Future<List<List<String>>> csvToRows(File file) async {
     final text = await file.readAsString();
 
     return text
         .split("\n")
         .where((e) => e.trim().isNotEmpty)
-        .map((line) => line
-        .split(",")
-        .map((e) => e.replaceAll('"', '').trim())
-        .toList())
+        .map(
+          (line) =>
+              line.split(",").map((e) => e.replaceAll('"', '').trim()).toList(),
+        )
         .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const SizedBox(height: 80),
+      appBar: AppBar(
+        leading: IconButton(
+        icon: const Icon(Icons.arrow_back,color: Color(0xff0050c0),), // 👈 غيّر هنا
+    onPressed: () {
+    Navigator.pop(context);
+    },
+        ),
+        backgroundColor: Colors.grey.shade100,
+        elevation: 0,
+        centerTitle: false,
+        title: const Text(
+          "Stock Gap Generator",
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      backgroundColor: Colors.grey.shade100,
+      body: Center(
+        child: SingleChildScrollView(
+          child: SizedBox(
+            width: 800,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 10),
 
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: pickInventory,
-                    child: Text(
-                      inventoryFileName ?? "Upload Missing Items",
+                  const Text(
+                    "Stock Gap Generator",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildUploadCard(
+                          title: "Missing Items",
+                          fileName: inventoryFileName,
+                          icon: Icons.inventory,
+                          onPressed: pickInventory,
+                          iconColor: Color(0xff0050c0),
+                        ),
+                      ),
+
+                      const SizedBox(width: 20),
+
+                      Expanded(
+                        child: _buildUploadCard(
+                          title: "Price List",
+                          fileName: orderFileName,
+                          icon: Icons.receipt_long,
+                          onPressed: pickOrder,
+                          iconColor: Color(0xff0050c0),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  SizedBox(
+                    height: 55,
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+
+
+
+                      onPressed:
+                          (inventoryFileName != null && orderFileName != null)
+                          ? generateOrder
+                          : null,
+                      icon: Icon(
+                        Icons.play_arrow,
+                        color:
+                            (inventoryFileName != null && orderFileName != null)
+                            ? Colors.white
+                            : Colors.white,
+                      ),
+                      label: const Text(
+                        "Generate Order",
+                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:  Colors.green,
+
+                        disabledBackgroundColor: Color(0xff0050c0),
+                        foregroundColor: Color(0xff0050c0),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
                   ),
-                ),
 
-                const SizedBox(width: 20),
+                  const SizedBox(height: 25),
 
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: pickOrder,
-                    child: Text(
-                      orderFileName ?? "Upload List",
+                  if (generatedFileBytes != null)
+                    SizedBox(
+                      height: 55,
+                      child: ElevatedButton.icon(
+                        onPressed: () => downloadFile(generatedFileBytes!),
+                        icon: const Icon(Icons.download),
+                        label: Center(
+                          child: const Text(
+                            "Save Excel",
+                            style: TextStyle(color: Colors.green),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 30),
+
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Center(
+                        child: Text(
+                          statusText,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xff0050c0),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 40),
-
-            ElevatedButton(
-              onPressed: generateOrder,
-              child: const Text("Generate Order"),
-            ),
-
-            const SizedBox(height: 20),
-
-            if (generatedFileBytes != null)
-              ElevatedButton.icon(
-                onPressed: () => downloadFile(generatedFileBytes!),
-                icon: const Icon(Icons.download),
-                label: const Text("Save File"),
+                ],
               ),
-
-            const SizedBox(height: 20),
-
-            Text(statusText),
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        color: Colors.transparent,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "User: Ahmed",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Text(
+              "Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+Widget _buildUploadCard({
+  required String title,
+  required String? fileName,
+  required IconData icon,
+  required Color iconColor,
+  required VoidCallback onPressed,
+}) {
+  final uploaded = fileName != null;
+
+  return Card(
+    elevation: 4,
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Icon(
+            uploaded ? Icons.check_circle : icon,
+            size: 50,
+            color: uploaded ? Colors.green : Color(0xff0050c0),
+          ),
+          const SizedBox(height: 15),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            fileName ?? "No file selected",
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: onPressed,
+            child: Text(
+              uploaded ? "Change File" : "Upload",
+              style: TextStyle(color: Color(0xff0050c0)),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
