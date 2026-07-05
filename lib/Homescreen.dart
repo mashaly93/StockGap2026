@@ -1,10 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'OrderScreen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 class Homescreen extends StatelessWidget {
-  const Homescreen({super.key});
+   Homescreen({super.key});
 
   static const String routeName = 'Homescreen';
+  final codeController = TextEditingController();
+  final passwordController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +56,7 @@ class Homescreen extends StatelessWidget {
 
                         // Store Code
                         TextFormField(
+                          controller: codeController,
                           decoration: InputDecoration(
                             labelText: 'Pharmacy / Store Code',
                             prefixIcon: const Icon(Icons.store),
@@ -61,16 +67,10 @@ class Homescreen extends StatelessWidget {
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
-                              ),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xff0050c0),
-                                width: 1.5,
-                              ),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: Color(0xff0050c0), width: 1.5),
                             ),
                           ),
                         ),
@@ -79,6 +79,7 @@ class Homescreen extends StatelessWidget {
 
                         // Password
                         TextFormField(
+                          controller: passwordController,
                           obscureText: true,
                           decoration: InputDecoration(
                             labelText: 'Password',
@@ -89,17 +90,10 @@ class Homescreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
-                              ),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xff0050c0),
-                                width: 1.5,
-                              ),
+                            focusedBorder: const OutlineInputBorder(
+                              borderSide: BorderSide(color: Color(0xff0050c0), width: 1.5),
                             ),
                           ),
                         ),
@@ -111,40 +105,59 @@ class Homescreen extends StatelessWidget {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xff0050c0),
+                            onPressed: () async {
+                              try {
+                                await FirebaseAuth.instance.signInWithEmailAndPassword(
+                                  email: codeController.text.trim(),
+                                  password: passwordController.text.trim(),
+                                );
+
+                                // 🔥 هنا نحفظ البيانات في Firestore
+                                final user = FirebaseAuth.instance.currentUser;
+
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(user!.uid)
+                                    .set({
+                                  'name': "Pharmacy 1",
+                                  'email': user.email,
+                                });
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Login Success 🚀")),
+                                );
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => OrderScreen(
+                                      storeCode: user.email ?? "",
+                                    ),
+                                  ),
+                                );
+
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text("Error: $e")),
+                                );
+                              }
+                            }
+
+                            // 🔥 هنا تغيير لون الزر
+                            ,style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xff0050c0), // لون الزر
+                              foregroundColor: Colors.white,            // لون النص
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 14,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              elevation: 2,
                             ),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                PageRouteBuilder(
-                                  pageBuilder: (context, animation, secondaryAnimation) =>
-                                   OrderScreen(),
 
-                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: child,
-                                    );
-                                  },
-
-                                  transitionDuration: const Duration(milliseconds: 350),
-                                ),
-                              );
-                            },
-                            child: const Text(
-                              'Login',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                            child: const Text("Login"),
+                          )
                         ),
                       ],
                     ),

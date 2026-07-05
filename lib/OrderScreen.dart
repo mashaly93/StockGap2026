@@ -9,12 +9,17 @@ import 'matcher.dart';
 
 class OrderScreen extends StatefulWidget {
   static const routeName = "orderScreen";
-
+   final String storeCode;
+  const OrderScreen({
+    super.key,
+    required this.storeCode,
+  });
   @override
   State<OrderScreen> createState() => _OrderScreenState();
 }
 
 class _OrderScreenState extends State<OrderScreen> {
+  late final storeCode = widget.storeCode;
   List<List<String>> inventoryRows = [];
   List<List<String>> orderRows = [];
 
@@ -109,6 +114,9 @@ class _OrderScreenState extends State<OrderScreen> {
 
     List<Map<String, String>> storeItems = [];
 
+    // =========================
+    // 1. تجهيز store items
+    // =========================
     for (int i = 1; i < orderRows.length; i++) {
       final row = orderRows[i];
 
@@ -135,6 +143,9 @@ class _OrderScreenState extends State<OrderScreen> {
       });
     }
 
+    // =========================
+    // 2. Excel setup
+    // =========================
     final excel = Excel.createExcel();
     final resultSheet = excel['Sheet1'];
     final missingSheet = excel['Missing'];
@@ -144,46 +155,53 @@ class _OrderScreenState extends State<OrderScreen> {
       TextCellValue("Qty"),
       TextCellValue("Matched Item"),
       TextCellValue("Score"),
-      TextCellValue("Buy Price"),
-      TextCellValue("Sell Price"),
-      TextCellValue("Buy Total"),
-      TextCellValue("Sell Total"),
+      TextCellValue("Price"),
+      TextCellValue("Total"),
     ]);
 
-    missingSheet.appendRow([TextCellValue("Item"), TextCellValue("Qty")]);
+    missingSheet.appendRow([
+      TextCellValue("Item"),
+      TextCellValue("Qty"),
+    ]);
 
-    // 🔥 أهم جزء: استخراج أسعار آمن 100%
+    // =========================
+    // 3. استخراج الأسعار
+    // =========================
     List<double> extractPrices(List<String> row) {
-      var prices = <double>[];
+      final prices = <double>[];
 
-      // ناخد آخر 4 أعمدة فقط (تجاهل الاسم والكمية)
-      final start = row.length - 4;
+      for (final cell in row) {
+        final text = cell.toString().trim();
 
-      for (int i = start; i < row.length; i++) {
-        if (i < 0) continue;
+        // ❌ تجاهل النسب المئوية
+        if (text.contains('%')) continue;
 
-        final cell = row[i]
-            .toString()
+        // استخراج الرقم
+        final cleaned = text
             .replaceAll(',', '')
             .replaceAll(RegExp(r'[^0-9.]'), '')
             .trim();
 
-        final value = double.tryParse(cell);
+        final value = double.tryParse(cleaned);
 
         if (value == null) continue;
 
-        // فلتر منطقي يمنع MG أو قيم غير منطقية
-        if (value <= 0 || value > 100000) continue;
+        // 🔥 فلترة مهمة جدًا
+        if (value <= 0) continue;
+
+        // ❌ استبعاد الأرقام الكبيرة اللي غالبًا totals
+        if (value > 1000) continue;
 
         prices.add(value);
       }
 
-      prices = prices.toSet().toList();
       prices.sort();
-
       return prices;
     }
 
+    // =========================
+    // 4. Loop inventory
+    // =========================
     for (int i = 1; i < inventoryRows.length; i++) {
       final row = inventoryRows[i];
 
@@ -192,27 +210,20 @@ class _OrderScreenState extends State<OrderScreen> {
       final originalItem = row[0].trim();
       final normalizedItem = Matcher.normalize(originalItem);
 
-      // ✅ الكمية
+      // qty
       int qty = 0;
       if (row.length > 1) {
         qty = int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
       }
 
-      // ✅ الأسعار
+      // prices
       final prices = extractPrices(row);
+      if (prices.isEmpty) continue;
 
-      double buyPrice = 0;
-      double sellPrice = 0;
+      double price = prices.last; // أعلى سعر
+      double total = price * qty;
 
-      if (prices.isNotEmpty) {
-        buyPrice = prices.first;
-        sellPrice = prices.length > 1 ? prices.last : prices.first;
-      }
-
-      final buyTotal = buyPrice * qty;
-      final sellTotal = sellPrice * qty;
-
-      // 🔹 المطابقة
+      // match
       final result = Matcher.findBestMatch(normalizedItem, storeItems);
 
       if (result.matchedItem != null && result.score >= 60) {
@@ -221,10 +232,8 @@ class _OrderScreenState extends State<OrderScreen> {
           TextCellValue(qty.toString()),
           TextCellValue(result.matchedItem!),
           TextCellValue("${result.score.toStringAsFixed(0)}%"),
-          TextCellValue(buyPrice.toStringAsFixed(3)),
-          TextCellValue(sellPrice.toStringAsFixed(3)),
-          TextCellValue(buyTotal.toStringAsFixed(3)),
-          TextCellValue(sellTotal.toStringAsFixed(3)),
+          TextCellValue(price.toStringAsFixed(3)),
+          TextCellValue(total.toStringAsFixed(3)),
         ]);
       } else {
         missingSheet.appendRow([
@@ -234,6 +243,9 @@ class _OrderScreenState extends State<OrderScreen> {
       }
     }
 
+    // =========================
+    // 5. Save file bytes
+    // =========================
     generatedFileBytes = Uint8List.fromList(excel.encode()!);
 
     setState(() {
@@ -410,11 +422,11 @@ class _OrderScreenState extends State<OrderScreen> {
                       height: 55,
                       child: ElevatedButton.icon(
                         onPressed: () => downloadFile(generatedFileBytes!),
-                        icon: const Icon(Icons.download),
+                        icon: const Icon(Icons.download,color:Color(0xff0050c0) ,),
                         label: Center(
                           child: const Text(
                             "Save Excel",
-                            style: TextStyle(color: Colors.green),
+                            style: TextStyle(color: Color(0xff0050c0)),
                           ),
                         ),
                       ),
@@ -450,7 +462,7 @@ class _OrderScreenState extends State<OrderScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              "User: Ahmed",
+              storeCode,
               style: TextStyle(
                 color: Colors.black,
                 fontWeight: FontWeight.w500,

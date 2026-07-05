@@ -37,6 +37,9 @@ dependencies:
   excel: ^4.0.6
   path_provider: ^2.1.2
   syncfusion_flutter_pdf: ^30.1.37
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.4
+  cloud_firestore: ^6.6.0
 
 dev_dependencies:
   flutter_test:
