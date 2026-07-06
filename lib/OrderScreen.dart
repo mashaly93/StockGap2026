@@ -28,7 +28,7 @@ class _OrderScreenState extends State<OrderScreen> {
   late final storeCode = widget.storeCode;
   List<List<String>> inventoryRows = [];
   List<List<String>> orderRows = [];
-
+  List<String> orders = [];
   Uint8List? generatedFileBytes;
 
   String? inventoryFileName;
@@ -276,6 +276,38 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Ready for a new order";
     });
   }
+  Future<void> saveOrderLocally() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    List<String> orders = prefs.getStringList("orders") ?? [];
+
+    orders.add(
+      "${DateTime.now().toString()} | ${inventoryRows.length} items",
+    );
+
+    await prefs.setStringList("orders", orders);
+  }
+  Future<void> showOrdersHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    List<String> orders = prefs.getStringList("orders") ?? [];
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Orders History"),
+        content: SizedBox(
+          height: 300,
+          width: 300,
+          child: ListView(
+            children: orders
+                .map((e) => Text(e))
+                .toList(),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> downloadFile(Uint8List bytes) async {
     final location = await getSaveLocation(suggestedName: "final_order.xlsx");
@@ -291,10 +323,17 @@ class _OrderScreenState extends State<OrderScreen> {
 
     setState(() {
       statusText = "Saved Successfully ✔";
+
     });
+    await saveOrderLocally();
+
 
     await Process.run('cmd', ['/c', 'start', '', filePath]);
     resetScreen();
+  }
+  Future<List<String>> getOrders() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList("orders") ?? [];
   }
 
 
@@ -340,8 +379,14 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.history),
+          onPressed: showOrdersHistory,
+        ),
 
         actions: [
+
+
           IconButton(
             icon: const Icon(
               Icons.logout,

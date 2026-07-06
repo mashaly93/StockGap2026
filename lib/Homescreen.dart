@@ -152,7 +152,6 @@ class _HomescreenState extends State<Homescreen> {
 
                                 if (result.docs.isEmpty) {
                                   setState(() => isLoading = false);
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text("User not found")),
                                   );
@@ -163,30 +162,35 @@ class _HomescreenState extends State<Homescreen> {
                                 final data = doc.data();
                                 final docRef = doc.reference;
 
+                                // =========================
+                                // PASSWORD CHECK
+                                // =========================
                                 if (data["password"] != password) {
                                   setState(() => isLoading = false);
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text("Wrong password")),
                                   );
                                   return;
                                 }
 
+                                // =========================
+                                // ACTIVE CHECK
+                                // =========================
                                 if (data["active"] != true) {
                                   setState(() => isLoading = false);
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text("Account is disabled")),
                                   );
                                   return;
                                 }
 
-                                final expireDate =
-                                (data["expireDate"] as Timestamp).toDate();
+                                // =========================
+                                // EXPIRE DATE CHECK
+                                // =========================
+                                final expireDate = (data["expireDate"] as Timestamp).toDate();
 
                                 if (DateTime.now().isAfter(expireDate)) {
                                   setState(() => isLoading = false);
-
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text("Subscription expired")),
                                   );
@@ -194,7 +198,7 @@ class _HomescreenState extends State<Homescreen> {
                                 }
 
                                 // =========================
-                                // DEVICE SYSTEM 🔥
+                                // DEVICE SYSTEM FIX 🔥 FINAL FIX
                                 // =========================
 
                                 final prefs = await SharedPreferences.getInstance();
@@ -202,41 +206,51 @@ class _HomescreenState extends State<Homescreen> {
                                 String deviceId = prefs.getString("deviceId") ?? "";
 
                                 if (deviceId.isEmpty) {
-                                  deviceId =
-                                      DateTime.now().millisecondsSinceEpoch.toString();
+                                  deviceId = DateTime.now().microsecondsSinceEpoch.toString();
                                   await prefs.setString("deviceId", deviceId);
                                 }
 
-                                List devices = data["devices"] ?? [];
+                                List rawDevices = List.from(data["devices"] ?? []);
                                 int maxDevices = data["maxDevices"] ?? 1;
 
-                                bool exists = devices.any(
-                                      (d) => d["deviceId"] == deviceId,
-                                );
+                                // 🔥 CLEAN LIST (important because you have "" in Firestore)
+                                List<Map<String, dynamic>> devices = [];
 
-                                if (!exists) {
-                                  if (devices.length >= maxDevices) {
-                                    setState(() => isLoading = false);
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text("Too many devices logged in"),
-                                      ),
-                                    );
-                                    return;
+                                for (var d in rawDevices) {
+                                  if (d is Map) {
+                                    devices.add(Map<String, dynamic>.from(d));
                                   }
-
-                                  devices.add({
-                                    "deviceId": deviceId,
-                                    "deviceName": "Flutter Device",
-                                    "loginTime": DateTime.now().toIso8601String(),
-                                  });
-
-                                  await docRef.update({
-                                    "devices": devices,
-                                  });
                                 }
 
+                                // 🔥 remove current device if exists
+                                devices.removeWhere((d) => d["deviceId"] == deviceId);
+
+                                // 🔥 check limit AFTER cleanup
+                                if (devices.length >= maxDevices) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Too many devices logged in"),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                // 🔥 add device
+                                devices.add({
+                                  "deviceId": deviceId,
+                                  "deviceName": "Flutter Device",
+                                  "loginTime": DateTime.now().toIso8601String(),
+                                });
+
+                                await docRef.update({
+                                  "devices": devices,
+                                });
+
+                                // =========================
+                                // SAVE SESSION
+                                // =========================
                                 await prefs.setString('username', username);
 
                                 setState(() => isLoading = false);
@@ -252,7 +266,6 @@ class _HomescreenState extends State<Homescreen> {
                                 );
                               } catch (e) {
                                 setState(() => isLoading = false);
-
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text(e.toString())),
                                 );
@@ -316,10 +329,15 @@ class _HomescreenState extends State<Homescreen> {
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
 
-    String deviceId = prefs.getString("deviceId") ?? "";
+    String? deviceId = prefs.getString("deviceId");
 
-    if (deviceId.isEmpty) {
-      deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+    if (deviceId == null || deviceId.isEmpty) {
+      deviceId = prefs.getString("deviceId") ?? "";
+
+      if (deviceId.isEmpty) {
+        deviceId = UniqueKey().toString();
+        await prefs.setString("deviceId", deviceId);
+      }
       await prefs.setString("deviceId", deviceId);
     }
 
