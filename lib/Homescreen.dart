@@ -1,15 +1,40 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'OrderScreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
-class Homescreen extends StatelessWidget {
-   Homescreen({super.key});
+class Homescreen extends StatefulWidget {
+  Homescreen({super.key});
 
   static const String routeName = 'Homescreen';
+
+  @override
+  State<Homescreen> createState() => _HomescreenState();
+}
+
+class _HomescreenState extends State<Homescreen> {
   final codeController = TextEditingController();
+
   final passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    codeController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      checkLogin();
+    });
+  }
+
+  bool isCheckingLogin = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +60,7 @@ class Homescreen extends StatelessWidget {
                     child: Column(
                       children: [
                         // Logo
-                        Image.asset(
-                          'assets/images/back.png',
-                          scale: 2.7,
-                        ),
+                        Image.asset('assets/images/back.png', scale: 2.7),
 
                         const SizedBox(height: 12),
 
@@ -67,10 +89,15 @@ class Homescreen extends StatelessWidget {
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xff0050c0), width: 1.5),
+                              borderSide: BorderSide(
+                                color: Color(0xff0050c0),
+                                width: 1.5,
+                              ),
                             ),
                           ),
                         ),
@@ -90,10 +117,15 @@ class Homescreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xff0050c0), width: 1.5),
+                              borderSide: BorderSide(
+                                color: Color(0xff0050c0),
+                                width: 1.5,
+                              ),
                             ),
                           ),
                         ),
@@ -106,47 +138,133 @@ class Homescreen extends StatelessWidget {
                           height: 52,
                           child: ElevatedButton(
                             onPressed: () async {
+                              setState(() => isLoading = true);
+
                               try {
-                                await FirebaseAuth.instance.signInWithEmailAndPassword(
-                                  email: codeController.text.trim(),
-                                  password: passwordController.text.trim(),
+                                final username = codeController.text.trim();
+                                final password = passwordController.text.trim();
+
+                                final result = await FirebaseFirestore.instance
+                                    .collection("users")
+                                    .where("username", isEqualTo: username)
+                                    .limit(1)
+                                    .get();
+
+                                if (result.docs.isEmpty) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("User not found")),
+                                  );
+                                  return;
+                                }
+
+                                final doc = result.docs.first;
+                                final data = doc.data();
+                                final docRef = doc.reference;
+
+                                if (data["password"] != password) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Wrong password")),
+                                  );
+                                  return;
+                                }
+
+                                if (data["active"] != true) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Account is disabled")),
+                                  );
+                                  return;
+                                }
+
+                                final expireDate =
+                                (data["expireDate"] as Timestamp).toDate();
+
+                                if (DateTime.now().isAfter(expireDate)) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Subscription expired")),
+                                  );
+                                  return;
+                                }
+
+                                // =========================
+                                // DEVICE SYSTEM 🔥
+                                // =========================
+
+                                final prefs = await SharedPreferences.getInstance();
+
+                                String deviceId = prefs.getString("deviceId") ?? "";
+
+                                if (deviceId.isEmpty) {
+                                  deviceId =
+                                      DateTime.now().millisecondsSinceEpoch.toString();
+                                  await prefs.setString("deviceId", deviceId);
+                                }
+
+                                List devices = data["devices"] ?? [];
+                                int maxDevices = data["maxDevices"] ?? 1;
+
+                                bool exists = devices.any(
+                                      (d) => d["deviceId"] == deviceId,
                                 );
 
-                                // 🔥 هنا نحفظ البيانات في Firestore
-                                final user = FirebaseAuth.instance.currentUser;
+                                if (!exists) {
+                                  if (devices.length >= maxDevices) {
+                                    setState(() => isLoading = false);
 
-                                await FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(user!.uid)
-                                    .set({
-                                  'name': "Pharmacy 1",
-                                  'email': user.email,
-                                });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Too many devices logged in"),
+                                      ),
+                                    );
+                                    return;
+                                  }
 
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Login Success 🚀")),
-                                );
+                                  devices.add({
+                                    "deviceId": deviceId,
+                                    "deviceName": "Flutter Device",
+                                    "loginTime": DateTime.now().toIso8601String(),
+                                  });
 
-                                Navigator.push(
+                                  await docRef.update({
+                                    "devices": devices,
+                                  });
+                                }
+
+                                await prefs.setString('username', username);
+
+                                setState(() => isLoading = false);
+
+                                Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => OrderScreen(
-                                      storeCode: user.email ?? "",
+                                      storeCode: username,
+                                      expireDate: data["expireDate"],
                                     ),
                                   ),
                                 );
-
                               } catch (e) {
+                                setState(() => isLoading = false);
+
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text("Error: $e")),
+                                  SnackBar(content: Text(e.toString())),
                                 );
                               }
-                            }
+                            },
 
                             // 🔥 هنا تغيير لون الزر
-                            ,style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xff0050c0), // لون الزر
-                              foregroundColor: Colors.white,            // لون النص
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(
+                                0xff0050c0,
+                              ), // لون الزر
+                              foregroundColor: Colors.white, // لون النص
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 40,
                                 vertical: 14,
@@ -156,8 +274,12 @@ class Homescreen extends StatelessWidget {
                               ),
                             ),
 
-                            child: const Text("Login"),
-                          )
+                            child: isLoading
+                                ? const CircularProgressIndicator(
+                              color: Colors.white,
+                            )
+                                : const Text("Login"),
+                          ),
                         ),
                       ],
                     ),
@@ -169,5 +291,69 @@ class Homescreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> checkLogin() async {
+    if (isCheckingLogin) return;
+
+    isCheckingLogin = true;
+
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    final prefs = await SharedPreferences.getInstance();
+    final savedUser = prefs.getString('username');
+
+    if (savedUser != null && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => OrderScreen(storeCode: savedUser)),
+      );
+    }
+
+    isCheckingLogin = false;
+  }
+
+  Future<String> getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    String deviceId = prefs.getString("deviceId") ?? "";
+
+    if (deviceId.isEmpty) {
+      deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+      await prefs.setString("deviceId", deviceId);
+    }
+
+    return deviceId;
+  }
+  Future<void> registerDevice({
+    required String deviceId,
+    required String deviceName,
+    required List devices,
+    required int maxDevices,
+    required DocumentReference docRef,
+    required Function(String) show,
+    required VoidCallback stopLoading,
+  }) async {
+
+    bool alreadyExists =
+    devices.any((d) => d["deviceId"] == deviceId);
+
+    if (!alreadyExists) {
+      if (devices.length >= maxDevices) {
+        stopLoading();
+        show("Too many devices logged in");
+        return;
+      }
+
+      devices.add({
+        "deviceId": deviceId,
+        "deviceName": deviceName,
+        "loginTime": DateTime.now().toIso8601String(),
+      });
+
+      await docRef.update({
+        "devices": devices,
+      });
+    }
   }
 }

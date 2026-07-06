@@ -1,19 +1,25 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-
+import 'Homescreen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'matcher.dart';
 
 class OrderScreen extends StatefulWidget {
   static const routeName = "orderScreen";
-   final String storeCode;
+  final String storeCode;
+  final Timestamp? expireDate;
+
   const OrderScreen({
     super.key,
     required this.storeCode,
+    this.expireDate,
   });
+
   @override
   State<OrderScreen> createState() => _OrderScreenState();
 }
@@ -40,6 +46,19 @@ class _OrderScreenState extends State<OrderScreen> {
     return table.rows
         .map((row) => row.map((e) => e?.value.toString() ?? "").toList())
         .toList();
+  }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('username');
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => Homescreen()),
+      (route) => false,
+    );
   }
 
   Future<List<List<String>>> processFile(File file) async {
@@ -155,14 +174,10 @@ class _OrderScreenState extends State<OrderScreen> {
       TextCellValue("Qty"),
       TextCellValue("Matched Item"),
       TextCellValue("Score"),
-      TextCellValue("Price"),
-      TextCellValue("Total"),
+
     ]);
 
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-    ]);
+    missingSheet.appendRow([TextCellValue("Item"), TextCellValue("Qty")]);
 
     // =========================
     // 3. استخراج الأسعار
@@ -232,8 +247,7 @@ class _OrderScreenState extends State<OrderScreen> {
           TextCellValue(qty.toString()),
           TextCellValue(result.matchedItem!),
           TextCellValue("${result.score.toStringAsFixed(0)}%"),
-          TextCellValue(price.toStringAsFixed(3)),
-          TextCellValue(total.toStringAsFixed(3)),
+
         ]);
       } else {
         missingSheet.appendRow([
@@ -250,6 +264,16 @@ class _OrderScreenState extends State<OrderScreen> {
 
     setState(() {
       statusText = "Done ✔";
+    });
+  }
+  void resetScreen() {
+    setState(() {
+      inventoryRows.clear();
+      orderRows.clear();
+      generatedFileBytes = null;
+      inventoryFileName = null;
+      orderFileName = null;
+      statusText = "Ready for a new order";
     });
   }
 
@@ -270,7 +294,9 @@ class _OrderScreenState extends State<OrderScreen> {
     });
 
     await Process.run('cmd', ['/c', 'start', '', filePath]);
+    resetScreen();
   }
+
 
   Future<File> convertPdfToCsv(File pdfFile) async {
     final outputPath = "${pdfFile.path}.csv";
@@ -314,17 +340,22 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-        icon: const Icon(Icons.arrow_back,color: Color(0xff0050c0),), // 👈 غيّر هنا
-    onPressed: () {
-    Navigator.pop(context);
-    },
-        ),
+
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.logout,
+              color: Color(0xff0050c0),
+            ),
+            onPressed: logout,
+            tooltip: "Logout",
+          ),
+        ],
         backgroundColor: Colors.grey.shade100,
         elevation: 0,
         centerTitle: false,
         title: const Text(
-          "Stock Gap Generator",
+          "",
           style: TextStyle(
             color: Colors.black,
             fontSize: 24,
@@ -384,9 +415,6 @@ class _OrderScreenState extends State<OrderScreen> {
                     height: 55,
                     width: double.infinity,
                     child: ElevatedButton.icon(
-
-
-
                       onPressed:
                           (inventoryFileName != null && orderFileName != null)
                           ? generateOrder
@@ -403,7 +431,7 @@ class _OrderScreenState extends State<OrderScreen> {
                         style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:  Colors.green,
+                        backgroundColor: Colors.green,
 
                         disabledBackgroundColor: Color(0xff0050c0),
                         foregroundColor: Color(0xff0050c0),
@@ -422,7 +450,10 @@ class _OrderScreenState extends State<OrderScreen> {
                       height: 55,
                       child: ElevatedButton.icon(
                         onPressed: () => downloadFile(generatedFileBytes!),
-                        icon: const Icon(Icons.download,color:Color(0xff0050c0) ,),
+                        icon: const Icon(
+                          Icons.download,
+                          color: Color(0xff0050c0),
+                        ),
                         label: Center(
                           child: const Text(
                             "Save Excel",
@@ -465,14 +496,16 @@ class _OrderScreenState extends State<OrderScreen> {
               storeCode,
               style: TextStyle(
                 color: Colors.black,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.bold,
               ),
             ),
             Text(
-              "Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}",
-              style: TextStyle(
+              widget.expireDate != null
+                  ? "Valid Until: ${widget.expireDate!.toDate().day}/${widget.expireDate!.toDate().month}/${widget.expireDate!.toDate().year}"
+                  : "No Validity Date",
+              style: const TextStyle(
                 color: Colors.black,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
