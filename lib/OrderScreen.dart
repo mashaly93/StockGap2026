@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
-
+import 'dart:convert';
+import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'Homescreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'history_screen.dart';
 import 'matcher.dart';
 
 class OrderScreen extends StatefulWidget {
@@ -276,16 +278,27 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Ready for a new order";
     });
   }
-  Future<void> saveOrderLocally() async {
+  Future<void> saveOrderLocally({
+    required String fileName,
+    required String filePath,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
 
-    List<String> orders = prefs.getStringList("orders") ?? [];
+    final List<String> history =
+        prefs.getStringList("orders") ?? [];
 
-    orders.add(
-      "${DateTime.now().toString()} | ${inventoryRows.length} items",
-    );
+    final order = {
+      "fileName": fileName,
+      "filePath": filePath,
+      "date": DateFormat("yyyy-MM-dd").format(DateTime.now()),
+      "items": inventoryRows.length,
+    };
 
-    await prefs.setStringList("orders", orders);
+    history.add(jsonEncode(order));
+
+    await prefs.setStringList("orders", history);
+
+
   }
   Future<void> showOrdersHistory() async {
     final prefs = await SharedPreferences.getInstance();
@@ -310,7 +323,17 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   Future<void> downloadFile(Uint8List bytes) async {
-    final location = await getSaveLocation(suggestedName: "final_order.xlsx");
+    final customName = await askFileName();
+
+    if(customName == null) return;
+
+    final today =
+    DateFormat("yyyy-MM-dd").format(DateTime.now());
+
+    final fileName = customName.isEmpty
+        ? "Order_$today.xlsx"
+        : "$customName.xlsx";
+    final location = await getSaveLocation(suggestedName: fileName);
 
     if (location == null) return;
 
@@ -325,7 +348,10 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Saved Successfully ✔";
 
     });
-    await saveOrderLocally();
+    await saveOrderLocally(
+      fileName: fileName,
+      filePath: filePath,
+    );
 
 
     await Process.run('cmd', ['/c', 'start', '', filePath]);
@@ -352,8 +378,7 @@ class _OrderScreenState extends State<OrderScreen> {
       pdfFile.path,
     ]);
 
-    print("STDOUT: ${result.stdout}");
-    print("STDERR: ${result.stderr}");
+
 
     if (result.exitCode != 0) {
       throw Exception(result.stderr.toString());
@@ -374,14 +399,60 @@ class _OrderScreenState extends State<OrderScreen> {
         )
         .toList();
   }
+  Future<String?> askFileName() async {
+    final controller = TextEditingController();
+
+    return await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Save Order"),
+
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: "File Name",
+          ),
+        ),
+
+        actions: [
+
+          TextButton(
+            onPressed: (){
+              Navigator.pop(context);
+            },
+            child: const Text("Cancel"),
+          ),
+
+          ElevatedButton(
+            onPressed: (){
+              Navigator.pop(
+                context,
+                controller.text.trim(),
+              );
+            },
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.history),
-          onPressed: showOrdersHistory,
+          icon: const Icon(Icons.list),
+          onPressed: (){
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>  HistoryScreen(),
+              ),
+            );
+
+          },
         ),
 
         actions: [
