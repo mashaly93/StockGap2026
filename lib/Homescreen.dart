@@ -141,119 +141,222 @@ class _HomescreenState extends State<Homescreen> {
                               setState(() => isLoading = true);
 
                               try {
+                                print("LOGIN START");
+
                                 final username = codeController.text.trim();
                                 final password = passwordController.text.trim();
 
-                                final result = await FirebaseFirestore.instance
-                                    .collection("users")
-                                    .where("username", isEqualTo: username)
-                                    .limit(1)
-                                    .get();
-
-                                if (result.docs.isEmpty) {
-                                  setState(() => isLoading = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("User not found")),
-                                  );
-                                  return;
-                                }
-
-                                final doc = result.docs.first;
-                                final data = doc.data();
-                                final docRef = doc.reference;
-
-                                // =========================
-                                // PASSWORD CHECK
-                                // =========================
-                                if (data["password"] != password) {
-                                  setState(() => isLoading = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Wrong password")),
-                                  );
-                                  return;
-                                }
-
-                                // =========================
-                                // ACTIVE CHECK
-                                // =========================
-                                if (data["active"] != true) {
-                                  setState(() => isLoading = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Account is disabled")),
-                                  );
-                                  return;
-                                }
-
-                                // =========================
-                                // EXPIRE DATE CHECK
-                                // =========================
-                                final expireDate = (data["expireDate"] as Timestamp).toDate();
-
-                                if (DateTime.now().isAfter(expireDate)) {
-                                  setState(() => isLoading = false);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Subscription expired")),
-                                  );
-                                  return;
-                                }
-
-                                // =========================
-                                // DEVICE SYSTEM FIX 🔥 FINAL FIX
-                                // =========================
-
-                                final prefs = await SharedPreferences.getInstance();
-
-                                String deviceId = prefs.getString("deviceId") ?? "";
-
-                                if (deviceId.isEmpty) {
-                                  deviceId = DateTime.now().microsecondsSinceEpoch.toString();
-                                  await prefs.setString("deviceId", deviceId);
-                                }
-
-                                List rawDevices = List.from(data["devices"] ?? []);
-                                int maxDevices = data["maxDevices"] ?? 1;
-
-                                // 🔥 CLEAN LIST (important because you have "" in Firestore)
-                                List<Map<String, dynamic>> devices = [];
-
-                                for (var d in rawDevices) {
-                                  if (d is Map) {
-                                    devices.add(Map<String, dynamic>.from(d));
-                                  }
-                                }
-
-                                // 🔥 remove current device if exists
-                                devices.removeWhere((d) => d["deviceId"] == deviceId);
-
-                                // 🔥 check limit AFTER cleanup
-                                if (devices.length >= maxDevices) {
+                                if (username.isEmpty || password.isEmpty) {
                                   setState(() => isLoading = false);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text("Too many devices logged in"),
+                                      content: Text("Enter username and password"),
                                     ),
                                   );
                                   return;
                                 }
 
-                                // 🔥 add device
-                                devices.add({
-                                  "deviceId": deviceId,
-                                  "deviceName": "Flutter Device",
-                                  "loginTime": DateTime.now().toIso8601String(),
-                                });
 
-                                await docRef.update({
-                                  "devices": devices,
-                                });
+                                print("BEFORE FIREBASE QUERY");
 
-                                // =========================
-                                // SAVE SESSION
-                                // =========================
-                                await prefs.setString('username', username);
+
+                                final result = await FirebaseFirestore.instance
+                                    .collection("users")
+                                    .where(
+                                  "username",
+                                  isEqualTo: username,
+                                )
+                                    .limit(1)
+                                    .get(
+                                  const GetOptions(
+                                    source: Source.server,
+                                  ),
+                                );
+
+
+                                print("AFTER FIREBASE QUERY");
+
+
+                                if (result.docs.isEmpty) {
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("User not found"),
+                                    ),
+                                  );
+
+                                  return;
+                                }
+
+
+                                final doc = result.docs.first;
+                                final data = doc.data();
+
+                                final docRef = doc.reference;
+
+
+                                // PASSWORD
+                                if (data["password"] != password) {
+
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Wrong password"),
+                                    ),
+                                  );
+
+                                  return;
+                                }
+
+
+
+                                // ACTIVE
+                                if (data["active"] != true) {
+
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Account disabled"),
+                                    ),
+                                  );
+
+                                  return;
+                                }
+
+
+
+                                // EXPIRE DATE
+
+                                final expireDate =
+                                (data["expireDate"] as Timestamp).toDate();
+
+
+                                if (DateTime.now().isAfter(expireDate)) {
+
+                                  setState(() => isLoading = false);
+
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Subscription expired"),
+                                    ),
+                                  );
+
+                                  return;
+                                }
+
+
+
+                                // DEVICE SYSTEM
+
+                                final prefs = await SharedPreferences.getInstance();
+
+
+                                String deviceId =
+                                    prefs.getString("deviceId") ?? "";
+
+
+                                if (deviceId.isEmpty) {
+
+                                  deviceId =
+                                      DateTime.now()
+                                          .microsecondsSinceEpoch
+                                          .toString();
+
+
+                                  await prefs.setString(
+                                    "deviceId",
+                                    deviceId,
+                                  );
+                                }
+
+
+
+                                List devices = List.from(
+                                  data["devices"] ?? [],
+                                );
+
+
+
+                                // تنظيف القيم الغلط
+                                devices = devices
+                                    .where((d)=> d is Map)
+                                    .map((d)=> Map<String,dynamic>.from(d))
+                                    .toList();
+
+
+
+                                // هل الجهاز موجود؟
+                                bool exists = devices.any(
+                                      (d)=> d["deviceId"] == deviceId,
+                                );
+
+
+
+                                int maxDevices =
+                                    data["maxDevices"] ?? 1;
+
+
+
+                                if (!exists) {
+
+                                  if (devices.length >= maxDevices) {
+
+                                    setState(() => isLoading = false);
+
+
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(
+                                      const SnackBar(
+                                        content:
+                                        Text("Too many devices logged in"),
+                                      ),
+                                    );
+
+                                    return;
+                                  }
+
+
+
+                                  devices.add({
+
+                                    "deviceId": deviceId,
+
+                                    "deviceName":
+                                    "Flutter Windows",
+
+                                    "loginTime":
+                                    DateTime.now()
+                                        .toIso8601String(),
+
+                                  });
+
+
+                                  await docRef.update({
+
+                                    "devices": devices,
+
+                                  });
+
+                                }
+
+
+
+                                // SAVE LOGIN
+
+                                await prefs.setString(
+                                  "username",
+                                  username,
+                                );
+
+
 
                                 setState(() => isLoading = false);
+
+
 
                                 Navigator.pushReplacement(
                                   context,
@@ -264,10 +367,24 @@ class _HomescreenState extends State<Homescreen> {
                                     ),
                                   ),
                                 );
-                              } catch (e) {
+
+
+
+                              } catch(e,stack){
+
+                                print(e);
+                                print(stack);
+
                                 setState(() => isLoading = false);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString())),
+
+
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      e.toString(),
+                                    ),
+                                  ),
                                 );
                               }
                             },
@@ -307,21 +424,23 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   Future<void> checkLogin() async {
-    if (isCheckingLogin) return;
+
+    if(isCheckingLogin) return;
 
     isCheckingLogin = true;
 
-    await Future.delayed(const Duration(milliseconds: 200));
 
-    final prefs = await SharedPreferences.getInstance();
-    final savedUser = prefs.getString('username');
+    final prefs =
+    await SharedPreferences.getInstance();
 
-    if (savedUser != null && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => OrderScreen(storeCode: savedUser)),
-      );
-    }
+
+    final savedUser =
+    prefs.getString("username");
+
+
+    // لا تدخل تلقائي حاليا
+    // خلي المستخدم يعمل Login كل مرة
+
 
     isCheckingLogin = false;
   }
@@ -369,9 +488,11 @@ class _HomescreenState extends State<Homescreen> {
         "loginTime": DateTime.now().toIso8601String(),
       });
 
+
       await docRef.update({
         "devices": devices,
       });
+
     }
   }
 }
