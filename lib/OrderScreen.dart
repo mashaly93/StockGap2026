@@ -513,19 +513,29 @@ class _OrderScreenState extends State<OrderScreen> {
   Future<File> convertPdfToCsv(File pdfFile) async {
     final outputPath = "${pdfFile.path}.csv";
 
-    final result = await Process.run("java", [
-      "-jar",
-      "tools/tabula.jar",
-      "-p",
-      "all",
-      "-f",
-      "CSV",
-      "-o",
-      outputPath,
-      pdfFile.path,
-    ]);
+    // مسار مجلد البرنامج
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
 
+    // Java الموجودة مع البرنامج
+    final javaPath = "$exeDir\\jre\\bin\\java.exe";
 
+    // tabula.jar الموجودة مع البرنامج
+    final tabulaPath = "$exeDir\\tools\\tabula.jar";
+
+    final result = await Process.run(
+      javaPath,
+      [
+        "-jar",
+        tabulaPath,
+        "-p",
+        "all",
+        "-f",
+        "CSV",
+        "-o",
+        outputPath,
+        pdfFile.path,
+      ],
+    );
 
     if (result.exitCode != 0) {
       throw Exception(result.stderr.toString());
