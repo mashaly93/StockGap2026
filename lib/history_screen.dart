@@ -42,7 +42,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
     }
 
-    print("VALID ORDERS = $allOrders");
+
 
     filterOrders(selectedDay);
   }

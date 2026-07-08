@@ -59,7 +59,7 @@ class _OrderScreenState extends State<OrderScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => Homescreen()),
-      (route) => false,
+          (route) => false,
     );
   }
 
@@ -133,140 +133,287 @@ class _OrderScreenState extends State<OrderScreen> {
       statusText = "Processing...";
     });
 
-    List<Map<String, String>> storeItems = [];
 
-    // =========================
-    // 1. تجهيز store items
-    // =========================
-    for (int i = 1; i < orderRows.length; i++) {
-      final row = orderRows[i];
-
-      if (row.isEmpty) continue;
-
-      String original = "";
-
-      for (int j = 1; j < row.length; j++) {
-        final cell = row[j].trim();
-
-        if (RegExp(r'^\d+(\.\d+)?$').hasMatch(cell)) {
-          break;
-        }
-
-        original += "$cell ";
-      }
-
-      original = original.trim();
-      if (original.isEmpty) continue;
-
-      storeItems.add({
-        "original": original,
-        "normalized": Matcher.normalize(original),
-      });
-    }
-
-    // =========================
-    // 2. Excel setup
-    // =========================
     final excel = Excel.createExcel();
+
     final resultSheet = excel['Sheet1'];
     final missingSheet = excel['Missing'];
+
 
     resultSheet.appendRow([
       TextCellValue("Item"),
       TextCellValue("Qty"),
       TextCellValue("Matched Item"),
-      TextCellValue("Score"),
-
+      TextCellValue("Purchase Price"),
+      TextCellValue("Sale Price"),
+      TextCellValue("Sale Total"),
     ]);
 
-    missingSheet.appendRow([TextCellValue("Item"), TextCellValue("Qty")]);
 
-    // =========================
-    // 3. استخراج الأسعار
-    // =========================
+    missingSheet.appendRow([
+      TextCellValue("Item"),
+      TextCellValue("Qty"),
+    ]);
+
+
+    double grandSaleTotal = 0;
+
+
+    // استخراج الأسعار
     List<double> extractPrices(List<String> row) {
+
       final prices = <double>[];
 
-      for (final cell in row) {
-        final text = cell.toString().trim();
 
-        // ❌ تجاهل النسب المئوية
+      for (final cell in row) {
+
+        final text = cell.trim();
+
+
         if (text.contains('%')) continue;
 
-        // استخراج الرقم
-        final cleaned = text
-            .replaceAll(',', '')
-            .replaceAll(RegExp(r'[^0-9.]'), '')
-            .trim();
 
-        final value = double.tryParse(cleaned);
+        final value = double.tryParse(
+          text.replaceAll(',', ''),
+        );
 
-        if (value == null) continue;
 
-        // 🔥 فلترة مهمة جدًا
-        if (value <= 0) continue;
-
-        // ❌ استبعاد الأرقام الكبيرة اللي غالبًا totals
-        if (value > 1000) continue;
-
-        prices.add(value);
+        if (value != null &&
+            value > 0 &&
+            value < 100 &&
+            !(
+                prices.isEmpty &&
+                    value == value.roundToDouble()
+            )
+        ) {
+          prices.add(value);
+        }
       }
 
-      prices.sort();
+
       return prices;
     }
 
-    // =========================
-    // 4. Loop inventory
-    // =========================
+
+
+    // نبدأ من Missing Items
     for (int i = 1; i < inventoryRows.length; i++) {
-      final row = inventoryRows[i];
 
-      if (row.isEmpty) continue;
 
-      final originalItem = row[0].trim();
-      final normalizedItem = Matcher.normalize(originalItem);
+      final missingRow = inventoryRows[i];
 
-      // qty
+
+      if (missingRow.isEmpty) continue;
+
+
+
+      String item = "";
+
       int qty = 0;
-      if (row.length > 1) {
-        qty = int.tryParse(row[1].replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+
+
+      // استخراج الاسم والكمية
+      for (final cell in missingRow) {
+
+        if (RegExp(r'^\d+$').hasMatch(cell)) {
+
+          qty = int.tryParse(cell) ?? 0;
+
+          break;
+        }
+
+
+        item += "$cell ";
       }
 
-      // prices
-      final prices = extractPrices(row);
-      if (prices.isEmpty) continue;
 
-      double price = prices.last; // أعلى سعر
-      double total = price * qty;
+      item = item.trim();
 
-      // match
-      final result = Matcher.findBestMatch(normalizedItem, storeItems);
 
-      if (result.matchedItem != null && result.score >= 60) {
-        resultSheet.appendRow([
-          TextCellValue(originalItem),
-          TextCellValue(qty.toString()),
-          TextCellValue(result.matchedItem!),
-          TextCellValue("${result.score.toStringAsFixed(0)}%"),
+      if (item.isEmpty) continue;
 
-        ]);
-      } else {
+
+
+      bool found = false;
+
+
+
+      // البحث في Price List
+      for (int j = 1; j < orderRows.length; j++) {
+
+
+        final priceRow = orderRows[j];
+
+
+        if (priceRow.isEmpty) continue;
+
+
+
+        String priceItem = "";
+
+
+
+        for (int x = 1; x < priceRow.length; x++) {
+
+
+          final cell = priceRow[x].trim();
+
+
+          if (RegExp(r'^\d').hasMatch(cell)) {
+            break;
+          }
+
+
+          priceItem += "$cell ";
+        }
+
+
+
+        priceItem = priceItem.trim();
+
+
+
+        final score = Matcher.findBestMatch(
+          Matcher.normalize(item),
+          [
+            {
+              "original": priceItem,
+              "normalized": Matcher.normalize(priceItem),
+            }
+          ],
+        );
+
+
+
+        if (score.matchedItem != null &&
+            score.score >= 60) {
+
+
+
+          final prices = extractPrices(priceRow);
+
+
+
+          if (prices.length >= 2) {
+
+
+            final purchasePrice = prices[0];
+
+            final salePrice = prices[1];
+
+
+            final saleTotal =
+                salePrice * qty;
+
+
+            grandSaleTotal += saleTotal;
+
+
+
+            resultSheet.appendRow([
+
+
+              TextCellValue(item),
+
+
+              TextCellValue(
+                qty.toString(),
+              ),
+
+
+              TextCellValue(
+                priceItem,
+              ),
+
+
+              TextCellValue(
+                purchasePrice.toStringAsFixed(3),
+              ),
+
+
+              TextCellValue(
+                salePrice.toStringAsFixed(3),
+              ),
+
+
+              TextCellValue(
+                saleTotal.toStringAsFixed(3),
+              ),
+
+            ]);
+
+
+            found = true;
+
+          }
+
+
+          break;
+
+        }
+
+      }
+
+
+
+      if (!found) {
+
+
         missingSheet.appendRow([
-          TextCellValue(originalItem),
-          TextCellValue(qty.toString()),
+
+          TextCellValue(item),
+
+          TextCellValue(
+            qty.toString(),
+          ),
+
         ]);
+
       }
+
     }
 
-    // =========================
-    // 5. Save file bytes
-    // =========================
-    generatedFileBytes = Uint8List.fromList(excel.encode()!);
+
+
+    // المجموع في النهاية
+
+    resultSheet.appendRow([]);
+
+
+    resultSheet.appendRow([
+
+      TextCellValue(""),
+
+      TextCellValue(""),
+
+      TextCellValue("TOTAL"),
+
+      TextCellValue(""),
+
+      TextCellValue(""),
+
+      TextCellValue(
+        grandSaleTotal.toStringAsFixed(3),
+      ),
+
+    ]);
+
+
+
+    generatedFileBytes =
+        Uint8List.fromList(
+          excel.encode()!,
+        );
+
+
 
     setState(() {
+
       statusText = "Done ✔";
+
     });
+
   }
   void resetScreen() {
     setState(() {
@@ -395,8 +542,8 @@ class _OrderScreenState extends State<OrderScreen> {
         .where((e) => e.trim().isNotEmpty)
         .map(
           (line) =>
-              line.split(",").map((e) => e.replaceAll('"', '').trim()).toList(),
-        )
+          line.split(",").map((e) => e.replaceAll('"', '').trim()).toList(),
+    )
         .toList();
   }
   Future<String?> askFileName() async {
@@ -532,13 +679,13 @@ class _OrderScreenState extends State<OrderScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed:
-                          (inventoryFileName != null && orderFileName != null)
+                      (inventoryFileName != null && orderFileName != null)
                           ? generateOrder
                           : null,
                       icon: Icon(
                         Icons.play_arrow,
                         color:
-                            (inventoryFileName != null && orderFileName != null)
+                        (inventoryFileName != null && orderFileName != null)
                             ? Colors.white
                             : Colors.white,
                       ),
