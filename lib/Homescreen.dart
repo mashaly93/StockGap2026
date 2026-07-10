@@ -141,7 +141,7 @@ class _HomescreenState extends State<Homescreen> {
                               setState(() => isLoading = true);
 
                               try {
-                                print("LOGIN START");
+
 
                                 final username = codeController.text.trim();
                                 final password = passwordController.text.trim();
@@ -157,10 +157,6 @@ class _HomescreenState extends State<Homescreen> {
                                   return;
                                 }
 
-
-                                print("BEFORE FIREBASE QUERY");
-
-
                                 final result = await FirebaseFirestore.instance
                                     .collection("users")
                                     .where(
@@ -175,7 +171,7 @@ class _HomescreenState extends State<Homescreen> {
                                 );
 
 
-                                print("AFTER FIREBASE QUERY");
+
 
 
                                 if (result.docs.isEmpty) {

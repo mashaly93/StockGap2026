@@ -109,6 +109,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (xfile == null) return;
 
       orderRows = await processFile(File(xfile.path));
+
       orderFileName = xfile.name;
 
       setState(() {
@@ -196,7 +197,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
 
 
-    // نبدأ من Missing Items
+    // دمج الأصناف المتكررة في Missing Items
+    final Map<String, Map<String, dynamic>> mergedItems = {};
+
+
     for (int i = 1; i < inventoryRows.length; i++) {
 
 
@@ -216,22 +220,66 @@ class _OrderScreenState extends State<OrderScreen> {
       // استخراج الاسم والكمية
       for (final cell in missingRow) {
 
-        if (RegExp(r'^\d+$').hasMatch(cell)) {
 
-          qty = int.tryParse(cell) ?? 0;
+        if (RegExp(r'^\d+$').hasMatch(cell.trim())) {
+
+
+          qty = int.tryParse(cell.trim()) ?? 0;
 
           break;
+
         }
 
 
         item += "$cell ";
+
       }
+
 
 
       item = item.trim();
 
 
+
       if (item.isEmpty) continue;
+
+
+
+      final key = Matcher.normalize(item);
+
+
+
+      // تجميع الكمية لو الصنف مكرر
+      if (mergedItems.containsKey(key)) {
+
+
+        mergedItems[key]!["qty"] += qty;
+
+
+      } else {
+
+
+        mergedItems[key] = {
+
+          "item": item,
+
+          "qty": qty,
+
+        };
+
+      }
+
+    }
+
+
+
+// البحث بعد دمج الأصناف
+    for (final data in mergedItems.values) {
+
+
+      final item = data["item"] as String;
+
+      final qty = data["qty"] as int;
 
 
 
@@ -252,20 +300,38 @@ class _OrderScreenState extends State<OrderScreen> {
 
         String priceItem = "";
 
+        int startIndex = 0;
 
 
-        for (int x = 1; x < priceRow.length; x++) {
+
+        // إذا أول عمود رقم، يبقى اسم المنتج يبدأ من العمود الثاني
+        if (priceRow.isNotEmpty &&
+            RegExp(r'^\d+$').hasMatch(priceRow[0].trim())) {
+
+          startIndex = 1;
+
+        }
+
+
+
+        for (int x = startIndex; x < priceRow.length; x++) {
 
 
           final cell = priceRow[x].trim();
 
 
-          if (RegExp(r'^\d').hasMatch(cell)) {
+
+          // أول رقم عشري هو بداية الأسعار
+          if (RegExp(r'^\d+\.\d+$').hasMatch(cell)) {
+
             break;
+
           }
 
 
+
           priceItem += "$cell ";
+
         }
 
 
@@ -274,15 +340,28 @@ class _OrderScreenState extends State<OrderScreen> {
 
 
 
+        if (priceItem.isEmpty) continue;
+
+
+
         final score = Matcher.findBestMatch(
+
           Matcher.normalize(item),
+
           [
+
             {
+
               "original": priceItem,
+
               "normalized": Matcher.normalize(priceItem),
+
             }
+
           ],
+
         );
+
 
 
 
@@ -298,13 +377,15 @@ class _OrderScreenState extends State<OrderScreen> {
           if (prices.length >= 2) {
 
 
+
             final purchasePrice = prices[0];
 
             final salePrice = prices[1];
 
 
-            final saleTotal =
-                salePrice * qty;
+
+            final saleTotal = salePrice * qty;
+
 
 
             grandSaleTotal += saleTotal;
@@ -322,9 +403,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
 
 
-              TextCellValue(
-                priceItem,
-              ),
+              TextCellValue(priceItem),
 
 
               TextCellValue(
@@ -341,12 +420,15 @@ class _OrderScreenState extends State<OrderScreen> {
                 saleTotal.toStringAsFixed(3),
               ),
 
+
             ]);
+
 
 
             found = true;
 
           }
+
 
 
           break;
@@ -362,11 +444,14 @@ class _OrderScreenState extends State<OrderScreen> {
 
         missingSheet.appendRow([
 
+
           TextCellValue(item),
+
 
           TextCellValue(
             qty.toString(),
           ),
+
 
         ]);
 
@@ -511,7 +596,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
 
   Future<File> convertPdfToCsv(File pdfFile) async {
-    final outputPath = "${pdfFile.path}.csv";
+    final tempDir = Directory.systemTemp;
+
+    final outputPath =
+        "${tempDir.path}\\converted_${DateTime.now().millisecondsSinceEpoch}.csv";
 
     // مسار مجلد البرنامج
     final exeDir = File(Platform.resolvedExecutable).parent.path;
