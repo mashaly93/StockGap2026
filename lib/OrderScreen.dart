@@ -32,7 +32,7 @@ class _OrderScreenState extends State<OrderScreen> {
   List<List<String>> orderRows = [];
   List<String> orders = [];
   Uint8List? generatedFileBytes;
-
+  bool isGenerating = false;
   String? inventoryFileName;
   String? orderFileName;
 
@@ -131,8 +131,11 @@ class _OrderScreenState extends State<OrderScreen> {
     }
 
     setState(() {
+      isGenerating = true;
       statusText = "Processing...";
     });
+    await Future.delayed(const Duration(milliseconds: 100));
+
 
 
     final excel = Excel.createExcel();
@@ -151,10 +154,6 @@ class _OrderScreenState extends State<OrderScreen> {
     ]);
 
 
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-    ]);
 
 
     double grandSaleTotal = 0;
@@ -274,192 +273,149 @@ class _OrderScreenState extends State<OrderScreen> {
 
 
 // البحث بعد دمج الأصناف
+    final similarItems = <Map<String, dynamic>>[];
+    final lowSimilarItems = <Map<String, dynamic>>[];
+
     for (final data in mergedItems.values) {
-
-
       final item = data["item"] as String;
-
       final qty = data["qty"] as int;
-
-
 
       bool found = false;
 
+      double bestScore = 0;
+      String bestItem = "";
 
-
-      // البحث في Price List
       for (int j = 1; j < orderRows.length; j++) {
-
-
         final priceRow = orderRows[j];
-
 
         if (priceRow.isEmpty) continue;
 
-
-
         String priceItem = "";
-
         int startIndex = 0;
 
-
-
-        // إذا أول عمود رقم، يبقى اسم المنتج يبدأ من العمود الثاني
         if (priceRow.isNotEmpty &&
             RegExp(r'^\d+$').hasMatch(priceRow[0].trim())) {
-
           startIndex = 1;
-
         }
-
-
 
         for (int x = startIndex; x < priceRow.length; x++) {
-
-
           final cell = priceRow[x].trim();
 
-
-
-          // أول رقم عشري هو بداية الأسعار
           if (RegExp(r'^\d+\.\d+$').hasMatch(cell)) {
-
             break;
-
           }
 
-
-
           priceItem += "$cell ";
-
         }
-
-
 
         priceItem = priceItem.trim();
 
-
-
         if (priceItem.isEmpty) continue;
 
-
-
         final score = Matcher.findBestMatch(
-
           Matcher.normalize(item),
-
           [
-
             {
-
               "original": priceItem,
-
               "normalized": Matcher.normalize(priceItem),
-
             }
-
           ],
-
         );
 
+        if (score.score > bestScore) {
+          bestScore = score.score.toDouble();
+          bestItem = priceItem;
+        }
 
-
-
-        if (score.matchedItem != null &&
-            score.score >= 60) {
-
-
+        if (score.matchedItem != null && score.score >= 60) {
 
           final prices = extractPrices(priceRow);
 
-
+          double purchasePrice = 0;
+          double salePrice = 0;
+          double saleTotal = 0;
 
           if (prices.length >= 2) {
-
-
-
-            final purchasePrice = prices[0];
-
-            final salePrice = prices[1];
-
-
-
-            final saleTotal = salePrice * qty;
-
-
+            purchasePrice = prices[0];
+            salePrice = prices[1];
+            saleTotal = salePrice * qty;
 
             grandSaleTotal += saleTotal;
-
-
-
-            resultSheet.appendRow([
-
-
-              TextCellValue(item),
-
-
-              TextCellValue(
-                qty.toString(),
-              ),
-
-
-              TextCellValue(priceItem),
-
-
-              TextCellValue(
-                purchasePrice.toStringAsFixed(3),
-              ),
-
-
-              TextCellValue(
-                salePrice.toStringAsFixed(3),
-              ),
-
-
-              TextCellValue(
-                saleTotal.toStringAsFixed(3),
-              ),
-
-
-            ]);
-
-
-
-            found = true;
-
           }
 
+          resultSheet.appendRow([
+            TextCellValue(item),
+            TextCellValue(qty.toString()),
+            TextCellValue(priceItem),
+            TextCellValue(purchasePrice.toStringAsFixed(3)),
+            TextCellValue(salePrice.toStringAsFixed(3)),
+            TextCellValue(saleTotal.toStringAsFixed(3)),
+          ]);
 
+          found = true;
 
           break;
-
         }
-
       }
-
-
 
       if (!found) {
+        final row = {
+          "item": item,
+          "qty": qty,
+          "similar": bestItem,
+          "score": bestScore.toStringAsFixed(0),
+        };
 
-
-        missingSheet.appendRow([
-
-
-          TextCellValue(item),
-
-
-          TextCellValue(
-            qty.toString(),
-          ),
-
-
-        ]);
-
+        if (bestScore >= 40) {
+          similarItems.add(row);
+        } else {
+          lowSimilarItems.add(row);
+        }
       }
-
     }
 
+// عنوان الشيت
+    missingSheet.appendRow([
+      TextCellValue("Item"),
+      TextCellValue("Qty"),
+      TextCellValue("Similar Item"),
+      TextCellValue("Match %"),
+    ]);
+    missingSheet.appendRow([
+      TextCellValue("POSSIBLE MATCHES ITEMS"),
+    ]);
 
+// الأصناف من 40 إلى أقل من 60
+    for (final e in similarItems) {
+      missingSheet.appendRow([
+        TextCellValue(e["item"]),
+        TextCellValue(e["qty"].toString()),
+        TextCellValue(e["similar"]),
+        TextCellValue("${e["score"]}%"),
+      ]);
+    }
+
+// فاصل
+    missingSheet.appendRow([]);
+    missingSheet.appendRow([
+      TextCellValue("================ NOT MATCHED ITEMS (LESS SIMILARITY) ================"),
+    ]);
+    missingSheet.appendRow([
+      TextCellValue("Item"),
+      TextCellValue("Qty"),
+      TextCellValue("Similar Item"),
+      TextCellValue("Match %"),
+    ]);
+
+// أقل من 40
+    for (final e in lowSimilarItems) {
+      missingSheet.appendRow([
+        TextCellValue(e["item"]),
+        TextCellValue(e["qty"].toString()),
+        TextCellValue(e["similar"]),
+
+      ]);
+    }
 
     // المجموع في النهاية
 
@@ -495,9 +451,11 @@ class _OrderScreenState extends State<OrderScreen> {
 
     setState(() {
 
+      isGenerating = false;
       statusText = "Done ✔";
 
     });
+
 
   }
   void resetScreen() {
@@ -777,25 +735,39 @@ class _OrderScreenState extends State<OrderScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       onPressed:
-                      (inventoryFileName != null && orderFileName != null)
+                      (inventoryFileName != null &&
+                          orderFileName != null &&
+                          !isGenerating)
                           ? generateOrder
                           : null,
-                      icon: Icon(
+
+                      icon: isGenerating
+                          ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : Icon(
                         Icons.play_arrow,
-                        color:
-                        (inventoryFileName != null && orderFileName != null)
-                            ? Colors.white
-                            : Colors.white,
+                        color: Colors.white,
                       ),
-                      label: const Text(
-                        "Generate Order",
-                        style: TextStyle(fontSize: 18, color: Colors.white),
+
+                      label: Text(
+                        isGenerating ? "Processing..." : "Generate Order",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: Colors.white,
+                        ),
                       ),
+
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
 
-                        disabledBackgroundColor: Color(0xff0050c0),
-                        foregroundColor: Color(0xff0050c0),
+                        disabledBackgroundColor: const Color(0xff0050c0),
+                        foregroundColor: Colors.white,
 
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
