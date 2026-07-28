@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'OrderScreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'main_menu_screen.dart';
+
 class Homescreen extends StatefulWidget {
   Homescreen({super.key});
 
@@ -357,7 +359,7 @@ class _HomescreenState extends State<Homescreen> {
                                 Navigator.pushReplacement(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => OrderScreen(
+                                    builder: (_) => MainMenuScreen(
                                       storeCode: username,
                                       expireDate: data["expireDate"],
                                     ),

@@ -644,21 +644,35 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.list),
-          onPressed: (){
 
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>  HistoryScreen(),
-              ),
-            );
+        leading: IconButton(
+          color: Color(0xff0050c0),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+
+            Navigator.pop(context);
 
           },
         ),
 
+
         actions: [
+
+          Center(
+            child: IconButton(
+              icon: const Icon(Icons.history),
+              onPressed: () {
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HistoryScreen(),
+                  ),
+                );
+
+              },
+            ),
+          ),
 
 
           IconButton(
@@ -667,20 +681,21 @@ class _OrderScreenState extends State<OrderScreen> {
               color: Color(0xff0050c0),
             ),
             onPressed: logout,
-            tooltip: "Logout",
           ),
+
         ],
+
+
         backgroundColor: Colors.grey.shade100,
+
         elevation: 0,
+
+
         centerTitle: false,
-        title: const Text(
-          "",
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+
+
+
+
       ),
       backgroundColor: Colors.grey.shade100,
       body: Center(
