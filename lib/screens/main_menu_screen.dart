@@ -1,11 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'OrderScreen.dart';
 import 'drug_search_screen.dart';
+import 'import_drug_screen.dart';
 
 class MainMenuScreen extends StatelessWidget {
   final String storeCode;
-  final dynamic expireDate;
+  final Timestamp? expireDate;
 
   const MainMenuScreen({
     super.key,
@@ -19,6 +21,19 @@ class MainMenuScreen extends StatelessWidget {
       backgroundColor: Colors.grey.shade100,
 
       appBar: AppBar(
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ImportDrugScreen(),
+                ),
+              );
+            },
+          ),
+        ],
         automaticallyImplyLeading: false,
 
         backgroundColor: Colors.grey.shade100,

@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:stockgap2026/service/drug_service.dart';
 
-import '../models/drug_model.dart';
+import '../../models/drug_model.dart';
+import 'drug_details_screen.dart';
 
 
 class DrugSearchScreen extends StatefulWidget {
@@ -135,7 +136,12 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
                           ),
 
                           onTap: () {
-                            showDrugDetails(context, drug);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => DrugDetailsScreen(drug: drug),
+                              ),
+                            );
                           },
                         ),
                       );

@@ -229,11 +229,13 @@ class _HomescreenState extends State<Homescreen> {
 
                                 // EXPIRE DATE
 
-                                final expireDate =
-                                (data["expireDate"] as Timestamp).toDate();
+                                final expireDate = data["expireDate"] is Timestamp
+                                    ? data["expireDate"] as Timestamp
+                                    : null;
 
 
-                                if (DateTime.now().isAfter(expireDate)) {
+                                if (expireDate != null &&
+                                    DateTime.now().isAfter(expireDate.toDate())) {
 
                                   setState(() => isLoading = false);
 
@@ -361,7 +363,7 @@ class _HomescreenState extends State<Homescreen> {
                                   MaterialPageRoute(
                                     builder: (_) => MainMenuScreen(
                                       storeCode: username,
-                                      expireDate: data["expireDate"],
+                                      expireDate: expireDate,
                                     ),
                                   ),
                                 );

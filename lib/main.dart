@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'firebase_options.dart';
+import 'firebase/firebase_options.dart';
 
-import 'Homescreen.dart';
-import 'OrderScreen.dart';
-import 'drug_search_screen.dart';
-import 'main_menu_screen.dart';
+import 'screens/Homescreen.dart';
+import 'screens/OrderScreen.dart';
+import 'screens/drug_search_screen.dart';
+import 'screens/main_menu_screen.dart';
 
 
 void main() async {
@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
       title: "StockGap",
 
       // الشاشة التي تظهر عند فتح التطبيق
-      home: const MainMenuScreen(storeCode: '', expireDate: '',),
+      home: const MainMenuScreen(storeCode: '', expireDate: null, ),
 
       routes: {
         Homescreen.routeName: (context) => Homescreen(),
