@@ -1,90 +1,153 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/drug_model.dart';
 
 class DrugService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  List<DrugModel> _allDrugs = [];
+
+  bool _loaded = false;
+
+  // ==========================
+  // Load all drugs once
+  // ==========================
+  Future<void> loadAllDrugs() async {
+    if (_loaded) return;
+
+    final snapshot = await _db.collection("drugs").get();
+
+    _allDrugs = snapshot.docs
+        .map((e) => DrugModel.fromMap(e.id, e.data()))
+        .toList();
+
+    _loaded = true;
+  }
+
+  // ==========================
+  // Search
+  // ==========================
   Future<List<DrugModel>> searchDrug(String query) async {
+    await loadAllDrugs();
+
     query = query.trim().toLowerCase();
 
     if (query.isEmpty) {
       return [];
     }
 
-    List<DrugModel> drugs = [];
+    final results = _allDrugs.where((drug) {
+      return drug.tradeName.toLowerCase().contains(query) ||
+          drug.active1.toLowerCase().contains(query) ||
+          drug.active2.toLowerCase().contains(query) ||
+          drug.registration.toLowerCase().contains(query) ||
+          drug.manufacturer.toLowerCase().contains(query) ||
+          drug.agent.toLowerCase().contains(query);
+    }).toList();
 
-    // 1- Search in search array
-    final searchResult = await _db
-        .collection("drugs")
-        .where("search", arrayContains: query)
-        .limit(20)
-        .get();
+    results.sort((a, b) {
+      int scoreA = _score(a, query);
+      int scoreB = _score(b, query);
 
-    drugs.addAll(
-      searchResult.docs.map((doc) => DrugModel.fromMap(doc.id, doc.data())),
+      if (scoreA != scoreB) {
+        return scoreB.compareTo(scoreA);
+      }
+
+      return a.tradeName.compareTo(b.tradeName);
+    });
+
+    return results.take(50).toList();
+  }
+
+  // ==========================
+  // Search Score
+  // ==========================
+  int _score(DrugModel drug, String query) {
+    final name = drug.tradeName.toLowerCase();
+    final active1 = drug.active1.toLowerCase();
+    final active2 = drug.active2.toLowerCase();
+    final reg = drug.registration.toLowerCase();
+
+    if (name.startsWith(query)) return 100;
+
+    if (name.contains(query)) return 90;
+
+    if (active1.startsWith(query)) return 80;
+
+    if (active2.startsWith(query)) return 70;
+
+    if (reg.startsWith(query)) return 60;
+
+    return 10;
+  }
+
+  // ==========================
+  // Alternatives
+  // ==========================
+  Future<List<DrugModel>> getAlternatives(DrugModel drug) async {
+
+    await loadAllDrugs();
+
+
+    final alternatives = _allDrugs.where((d) {
+
+
+      if (d.id == drug.id) {
+        return false;
+      }
+
+
+      final sameActive1 =
+          d.active1.trim().toLowerCase()
+              ==
+              drug.active1.trim().toLowerCase();
+
+
+      final sameActive2 =
+          d.active2.trim().isEmpty ||
+              d.active2.trim().toLowerCase()
+                  ==
+                  drug.active2.trim().toLowerCase();
+
+
+      final sameStrength =
+          d.strength == drug.strength;
+
+
+
+      return sameActive1 &&
+          sameActive2 &&
+          sameStrength;
+
+
+    }).toList();
+
+
+
+    alternatives.sort(
+          (a,b)=>a.price.compareTo(b.price),
     );
 
-    // 2- Search trade name
-    final nameResult = await _db
-        .collection("drugs")
-        .where("tradeNameLower", isGreaterThanOrEqualTo: query)
-        .where("tradeNameLower", isLessThan: '$query\uf8ff')
-        .limit(20)
-        .get();
-
-    for (var doc in nameResult.docs) {
-      if (!drugs.any((d) => d.id == doc.id)) {
-        drugs.add(DrugModel.fromMap(doc.id, doc.data()));
-      }
-    }
-
-    // 3- Search active ingredient
-    final activeResult = await _db
-        .collection("drugs")
-        .where("active1Lower", isGreaterThanOrEqualTo: query)
-        .where("active1Lower", isLessThan: '$query\uf8ff')
-        .limit(20)
-        .get();
-
-    for (var doc in activeResult.docs) {
-      if (!drugs.any((d) => d.id == doc.id)) {
-        drugs.add(DrugModel.fromMap(doc.id, doc.data()));
-      }
-    }
-
-    return drugs.take(30).toList();
-  }
-  Future<List<DrugModel>> getAlternatives(DrugModel drug) async {
-    List<DrugModel> alternatives = [];
-
-    if (drug.active1.trim().isEmpty) {
-      return alternatives;
-    }
-
-    final result = await _db
-        .collection("drugs")
-        .where("active1Lower", isEqualTo: drug.active1.toLowerCase())
-        .limit(20)
-        .get();
-
-    for (var doc in result.docs) {
-      if (doc.id != drug.id) {
-        alternatives.add(
-          DrugModel.fromMap(doc.id, doc.data()),
-        );
-      }
-    }
 
     return alternatives;
+
   }
 
+  // ==========================
+  // Get by ID
+  // ==========================
   Future<DrugModel?> getDrugById(String id) async {
-    final doc = await _db.collection("drugs").doc(id).get();
+    await loadAllDrugs();
 
-    if (!doc.exists) {
+    try {
+      return _allDrugs.firstWhere((d) => d.id == id);
+    } catch (_) {
       return null;
     }
-
-    return DrugModel.fromMap(doc.id, doc.data()!);
   }
+
+  // ==========================
+  // Recent
+  // ==========================
+  List<DrugModel> get allDrugs => _allDrugs;
 }

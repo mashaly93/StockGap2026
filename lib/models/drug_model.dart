@@ -58,25 +58,101 @@ class DrugModel {
   Map<String, dynamic> toMap() {
     return {
       "registration": registration,
+
       "tradeName": tradeName,
+
       "packSize": packSize,
+
       "active1": active1,
+
       "active2": active2,
+
       "manufacturer": manufacturer,
+
       "agent": agent,
+
       "price": price,
     };
   }
 
+  // ============================
+  // Drug Strength
+  // ============================
+
+  String get strength {
+    final text = "$tradeName $packSize".toLowerCase();
+
+    final match = RegExp(r'\d+\s?(mg|mcg|g|ml)').firstMatch(text);
+
+    return match?.group(0)?.replaceAll(" ", "").toLowerCase() ?? "";
+  }
+
+  // ============================
+  // Search Helpers
+  // ============================
+
+  String get tradeNameLower => tradeName.toLowerCase().trim();
+
+  String get active1Lower => active1.toLowerCase().trim();
+
+  String get active2Lower => active2.toLowerCase().trim();
+
+  String get registrationLower => registration.toLowerCase().trim();
+
+  bool matches(String query) {
+    query = query.toLowerCase().trim();
+
+    return tradeNameLower.contains(query) ||
+        active1Lower.contains(query) ||
+        active2Lower.contains(query) ||
+        registrationLower.contains(query) ||
+        manufacturer.toLowerCase().contains(query) ||
+        agent.toLowerCase().contains(query);
+  }
+
+  int searchScore(String query) {
+    query = query.toLowerCase().trim();
+
+    if (tradeNameLower.startsWith(query)) {
+      return 100;
+    }
+
+    if (tradeNameLower.contains(query)) {
+      return 90;
+    }
+
+    if (active1Lower.startsWith(query)) {
+      return 80;
+    }
+
+    if (active2Lower.startsWith(query)) {
+      return 70;
+    }
+
+    if (registrationLower.startsWith(query)) {
+      return 60;
+    }
+
+    return 0;
+  }
+
   DrugModel copyWith({
     String? id,
+
     String? registration,
+
     String? tradeName,
+
     String? packSize,
+
     String? active1,
+
     String? active2,
+
     String? manufacturer,
+
     String? agent,
+
     double? price,
   }) {
     return DrugModel(
@@ -106,6 +182,7 @@ class DrugModel {
 DrugModel(
 id: $id,
 name: $tradeName,
+strength: $strength,
 pack: $packSize,
 price: $price
 )

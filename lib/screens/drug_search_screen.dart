@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:stockgap2026/service/drug_service.dart';
 
 import '../../models/drug_model.dart';
+import '../../service/drug_service.dart';
 import 'drug_details_screen.dart';
-
 
 class DrugSearchScreen extends StatefulWidget {
   static const routeName = "DrugSearchScreen";
+
   const DrugSearchScreen({super.key});
 
   @override
@@ -23,12 +23,29 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
   List<DrugModel> results = [];
 
-  bool loading = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadDrugs();
+  }
+
+  Future<void> loadDrugs() async {
+    await service.loadAllDrugs();
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = false;
+    });
+  }
 
   void search(String value) {
     timer?.cancel();
 
-    timer = Timer(const Duration(milliseconds: 500), () async {
+    timer = Timer(const Duration(milliseconds: 300), () async {
       if (value.trim().isEmpty) {
         setState(() {
           results = [];
@@ -37,19 +54,21 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
         return;
       }
 
-      setState(() {
-        loading = true;
-      });
-
       final data = await service.searchDrug(value);
 
       if (!mounted) return;
 
       setState(() {
         results = data;
-
-        loading = false;
       });
+    });
+  }
+
+  void clearSearch() {
+    controller.clear();
+
+    setState(() {
+      results = [];
     });
   }
 
@@ -65,16 +84,19 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(leading: IconButton(
-        color: Color(0xff0050c0),
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () {
+      appBar: AppBar(
+        title: const Text("Drug Eye"),
 
-          Navigator.pop(context);
+        centerTitle: true,
 
-        },
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
       ),
-          title: const Text("")),
 
       body: Column(
         children: [
@@ -87,12 +109,20 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
               onChanged: search,
 
               decoration: InputDecoration(
-                hintText: "Search drug name or active ingredient",
+                hintText: "Search drug, active ingredient...",
 
                 prefixIcon: const Icon(Icons.search),
 
+                suffixIcon: controller.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+
+                        onPressed: clearSearch,
+                      ),
+
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(15),
                 ),
               ),
             ),
@@ -102,7 +132,15 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
           Expanded(
             child: results.isEmpty
-                ? const Center(child: Text("No drugs found"))
+                ? Center(
+                    child: Text(
+                      controller.text.isEmpty
+                          ? "Start searching..."
+                          : "No drugs found",
+
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: results.length,
 
@@ -112,12 +150,13 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
                       return Card(
                         margin: const EdgeInsets.symmetric(
                           horizontal: 12,
-                          vertical: 5,
+                          vertical: 6,
                         ),
 
                         child: ListTile(
                           title: Text(
                             drug.tradeName,
+
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
 
@@ -125,19 +164,27 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
 
                             children: [
-                              Text(drug.active1),
+                              if (drug.active1.isNotEmpty) Text(drug.active1),
 
                               if (drug.active2.isNotEmpty) Text(drug.active2),
 
                               Text("Pack: ${drug.packSize}"),
 
-                              Text("Price: ${drug.price}"),
+                              Text(
+                                "Price: ${drug.price.toStringAsFixed(3)} OMR",
+                              ),
                             ],
+                          ),
+
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
                           ),
 
                           onTap: () {
                             Navigator.push(
                               context,
+
                               MaterialPageRoute(
                                 builder: (_) => DrugDetailsScreen(drug: drug),
                               ),
@@ -150,44 +197,6 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  void showDrugDetails(BuildContext context, DrugModel drug) {
-    showModalBottomSheet(
-      context: context,
-
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-
-            crossAxisAlignment: CrossAxisAlignment.start,
-
-            children: [
-              Text(
-                drug.tradeName,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              Text("Registration: ${drug.registration}"),
-
-              Text("Manufacturer: ${drug.manufacturer}"),
-
-              Text("Agent: ${drug.agent}"),
-
-              Text("Price: ${drug.price}"),
-            ],
-          ),
-        );
-      },
     );
   }
 }

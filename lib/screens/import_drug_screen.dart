@@ -1,8 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:excel/excel.dart';
-import 'package:file_selector/file_selector.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../service/drug_import_service.dart';
@@ -19,124 +17,50 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
   String status = "";
 
-  Future<void> importPdf() async {
-    const typeGroup = XTypeGroup(label: "PDF", extensions: ["pdf"]);
+  final DrugImportService _importService = DrugImportService();
 
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+  Future<void> importExcel() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
 
-    if (file == null) return;
+      allowedExtensions: ["xlsx", "xls"],
+    );
 
-    if (!mounted) return;
+    if (result == null) return;
+
+    final file = File(result.files.single.path!);
 
     setState(() {
       loading = true;
 
-      status = "Converting PDF...";
+      status = "Uploading Excel...\nPlease wait";
     });
 
     try {
-      final csvFile = await convertPdfToCsv(File(file.path));
+      final bytes = await file.readAsBytes();
 
-      if (!mounted) return;
+      final count = await _importService.importExcel(bytes);
 
-      setState(() {
-        status = "Creating Excel...";
-      });
-
-      final excelBytes = await csvToExcel(csvFile);
-
-      if (!mounted) return;
-
-      setState(() {
-        status = "Uploading Firebase...";
-      });
-
-      final count = await DrugImportService().importExcel(excelBytes);
-
-      if (!mounted) return;
-
-      setState(() {
-        status = "Done ✔\nUploaded $count drugs";
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        status = "Error: $e";
-      });
-    }
-
-    if (mounted) {
       setState(() {
         loading = false;
+
+        status = "Finished ✔\n$count drugs uploaded";
       });
+    } catch (e) {
+      setState(() {
+        loading = false;
+
+        status = "Error:\n$e";
+      });
+
+      print(e);
     }
-  }
-
-  Future<File> convertPdfToCsv(File pdfFile) async {
-    final tempDir = Directory.systemTemp;
-
-    final outputPath =
-        "${tempDir.path}\\drugs_${DateTime.now().millisecondsSinceEpoch}.csv";
-
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-
-    final javaPath = "$exeDir\\jre\\bin\\java.exe";
-
-    final tabulaPath = "$exeDir\\tools\\tabula.jar";
-
-    final result = await Process.run(javaPath, [
-      "-jar",
-
-      tabulaPath,
-
-      "-p",
-
-      "all",
-
-      "-f",
-
-      "CSV",
-
-      "-o",
-
-      outputPath,
-
-      pdfFile.path,
-    ]);
-
-    if (result.exitCode != 0) {
-      throw Exception(result.stderr.toString());
-    }
-
-    return File(outputPath);
-  }
-
-  Future<Uint8List> csvToExcel(File csvFile) async {
-    final text = await csvFile.readAsString();
-
-    final excel = Excel.createExcel();
-
-    final sheet = excel['Sheet1'];
-
-    for (final line in text.split("\n")) {
-      if (line.trim().isEmpty) continue;
-
-      final cells = line
-          .split(",")
-          .map((e) => TextCellValue(e.replaceAll('"', '').trim()))
-          .toList();
-
-      sheet.appendRow(cells);
-    }
-
-    return Uint8List.fromList(excel.encode()!);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Import Drug PDF")),
+      appBar: AppBar(title: const Text("Import Drug Excel")),
 
       body: Center(
         child: Column(
@@ -144,11 +68,11 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
           children: [
             ElevatedButton.icon(
-              onPressed: loading ? null : importPdf,
+              onPressed: loading ? null : importExcel,
 
-              icon: const Icon(Icons.picture_as_pdf),
+              icon: const Icon(Icons.upload_file),
 
-              label: const Text("Select Drug PDF"),
+              label: const Text("Select Excel"),
             ),
 
             const SizedBox(height: 20),
