@@ -8,6 +8,7 @@ class DrugModel {
   final String manufacturer;
   final String agent;
   final double price;
+  final List<String> search;
 
   DrugModel({
     required this.id,
@@ -18,7 +19,7 @@ class DrugModel {
     required this.active2,
     required this.manufacturer,
     required this.agent,
-    required this.price,
+    required this.price, required this.search,
   });
 
   factory DrugModel.fromMap(String id, Map<String, dynamic> map) {
@@ -39,7 +40,7 @@ class DrugModel {
 
       agent: map["agent"]?.toString() ?? "",
 
-      price: _parsePrice(map["price"]),
+      price: _parsePrice(map["price"]), search: [],
     );
   }
 
@@ -172,7 +173,7 @@ class DrugModel {
 
       agent: agent ?? this.agent,
 
-      price: price ?? this.price,
+      price: price ?? this.price, search: [],
     );
   }
 

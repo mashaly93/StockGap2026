@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/drug_model.dart';
@@ -21,6 +22,8 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
   Timer? timer;
 
+  List<DrugModel> allDrugs = [];
+
   List<DrugModel> results = [];
 
   bool loading = true;
@@ -33,11 +36,13 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
   }
 
   Future<void> loadDrugs() async {
-    await service.loadAllDrugs();
+    final data = await service.loadAllDrugs();
 
     if (!mounted) return;
 
     setState(() {
+      allDrugs = data;
+
       loading = false;
     });
   }
@@ -45,8 +50,10 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
   void search(String value) {
     timer?.cancel();
 
-    timer = Timer(const Duration(milliseconds: 300), () async {
-      if (value.trim().isEmpty) {
+    timer = Timer(const Duration(milliseconds: 300), () {
+      final query = value.trim().toLowerCase();
+
+      if (query.isEmpty) {
         setState(() {
           results = [];
         });
@@ -54,9 +61,12 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
         return;
       }
 
-      final data = await service.searchDrug(value);
-
-      if (!mounted) return;
+      final data = allDrugs
+          .where((drug) {
+            return drug.search.any((item) => item.contains(query));
+          })
+          .take(20)
+          .toList();
 
       setState(() {
         results = data;
@@ -150,6 +160,7 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
                       return Card(
                         margin: const EdgeInsets.symmetric(
                           horizontal: 12,
+
                           vertical: 6,
                         ),
 
@@ -178,6 +189,7 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
                           trailing: const Icon(
                             Icons.arrow_forward_ios,
+
                             size: 16,
                           ),
 

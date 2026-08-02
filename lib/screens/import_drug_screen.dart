@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../service/drug_import_service.dart';
+import '../service/drug_update_service.dart';
 
 class ImportDrugScreen extends StatefulWidget {
   const ImportDrugScreen({super.key});
@@ -17,7 +17,7 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
   String status = "";
 
-  final DrugImportService _importService = DrugImportService();
+  final DrugUpdateService _updateService = DrugUpdateService();
 
   Future<void> importExcel() async {
     final result = await FilePicker.platform.pickFiles(
@@ -33,18 +33,18 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
     setState(() {
       loading = true;
 
-      status = "Uploading Excel...\nPlease wait";
+      status = "Updating drugs...\nPlease wait";
     });
 
     try {
       final bytes = await file.readAsBytes();
 
-      final count = await _importService.importExcel(bytes);
+      final count = await _updateService.updateExcel(bytes);
 
       setState(() {
         loading = false;
 
-        status = "Finished ✔\n$count drugs uploaded";
+        status = "Finished ✔\n$count drugs updated";
       });
     } catch (e) {
       setState(() {
@@ -60,7 +60,7 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Import Drug Excel")),
+      appBar: AppBar(title: const Text("Update Drug Excel")),
 
       body: Center(
         child: Column(

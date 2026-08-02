@@ -12,8 +12,10 @@ class DrugService {
   // ==========================
   // Load all drugs once
   // ==========================
-  Future<void> loadAllDrugs() async {
-    if (_loaded) return;
+  Future<List<DrugModel>> loadAllDrugs() async {
+    if (_loaded) {
+      return _allDrugs;
+    }
 
     final snapshot = await _db.collection("drugs").get();
 
@@ -22,14 +24,14 @@ class DrugService {
         .toList();
 
     _loaded = true;
+
+    return _allDrugs;
   }
 
   // ==========================
-  // Search
+  // Local Search
   // ==========================
-  Future<List<DrugModel>> searchDrug(String query) async {
-    await loadAllDrugs();
-
+  List<DrugModel> searchLocal(String query) {
     query = query.trim().toLowerCase();
 
     if (query.isEmpty) {
@@ -47,6 +49,7 @@ class DrugService {
 
     results.sort((a, b) {
       int scoreA = _score(a, query);
+
       int scoreB = _score(b, query);
 
       if (scoreA != scoreB) {
@@ -59,13 +62,13 @@ class DrugService {
     return results.take(50).toList();
   }
 
-  // ==========================
-  // Search Score
-  // ==========================
   int _score(DrugModel drug, String query) {
     final name = drug.tradeName.toLowerCase();
+
     final active1 = drug.active1.toLowerCase();
+
     final active2 = drug.active2.toLowerCase();
+
     final reg = drug.registration.toLowerCase();
 
     if (name.startsWith(query)) return 100;
@@ -85,52 +88,28 @@ class DrugService {
   // Alternatives
   // ==========================
   Future<List<DrugModel>> getAlternatives(DrugModel drug) async {
-
     await loadAllDrugs();
 
-
     final alternatives = _allDrugs.where((d) {
-
-
       if (d.id == drug.id) {
         return false;
       }
 
-
       final sameActive1 =
-          d.active1.trim().toLowerCase()
-              ==
-              drug.active1.trim().toLowerCase();
-
+          d.active1.trim().toLowerCase() == drug.active1.trim().toLowerCase();
 
       final sameActive2 =
           d.active2.trim().isEmpty ||
-              d.active2.trim().toLowerCase()
-                  ==
-                  drug.active2.trim().toLowerCase();
+          d.active2.trim().toLowerCase() == drug.active2.trim().toLowerCase();
 
+      final sameStrength = d.strength == drug.strength;
 
-      final sameStrength =
-          d.strength == drug.strength;
-
-
-
-      return sameActive1 &&
-          sameActive2 &&
-          sameStrength;
-
-
+      return sameActive1 && sameActive2 && sameStrength;
     }).toList();
 
-
-
-    alternatives.sort(
-          (a,b)=>a.price.compareTo(b.price),
-    );
-
+    alternatives.sort((a, b) => a.price.compareTo(b.price));
 
     return alternatives;
-
   }
 
   // ==========================
@@ -146,8 +125,5 @@ class DrugService {
     }
   }
 
-  // ==========================
-  // Recent
-  // ==========================
   List<DrugModel> get allDrugs => _allDrugs;
 }
