@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:hive_flutter/hive_flutter.dart';
+
 import '../models/drug_model.dart';
 
 class DrugService {
@@ -10,20 +12,51 @@ class DrugService {
   bool _loaded = false;
 
   // ==========================
-  // Load all drugs once
+  // Load all drugs with Cache
   // ==========================
   Future<List<DrugModel>> loadAllDrugs() async {
     if (_loaded) {
       return _allDrugs;
     }
 
+    final box = Hive.box("drugs");
+
+    // ==========================
+    // Load from local cache
+    // ==========================
+    if (box.isNotEmpty) {
+      _allDrugs = box.values.map((e) {
+        return DrugModel.fromLocal(Map<String, dynamic>.from(e));
+      }).toList();
+
+      _loaded = true;
+
+      print("Loaded from Hive: ${_allDrugs.length}");
+
+      return _allDrugs;
+    }
+
+    // ==========================
+    // First time Firebase
+    // ==========================
     final snapshot = await _db.collection("drugs").get();
 
     _allDrugs = snapshot.docs
         .map((e) => DrugModel.fromMap(e.id, e.data()))
         .toList();
 
+    // ==========================
+    // Save to Hive
+    // ==========================
+    await box.clear();
+
+    for (final drug in _allDrugs) {
+      await box.put(drug.id, drug.toMap());
+    }
+
     _loaded = true;
+
+    print("Loaded from Firebase: ${_allDrugs.length}");
 
     return _allDrugs;
   }
@@ -39,12 +72,7 @@ class DrugService {
     }
 
     final results = _allDrugs.where((drug) {
-      return drug.tradeName.toLowerCase().contains(query) ||
-          drug.active1.toLowerCase().contains(query) ||
-          drug.active2.toLowerCase().contains(query) ||
-          drug.registration.toLowerCase().contains(query) ||
-          drug.manufacturer.toLowerCase().contains(query) ||
-          drug.agent.toLowerCase().contains(query);
+      return drug.search.any((item) => item.toLowerCase().contains(query));
     }).toList();
 
     results.sort((a, b) {

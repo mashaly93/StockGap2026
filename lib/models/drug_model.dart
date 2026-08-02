@@ -19,7 +19,8 @@ class DrugModel {
     required this.active2,
     required this.manufacturer,
     required this.agent,
-    required this.price, required this.search,
+    required this.price,
+    required this.search,
   });
 
   factory DrugModel.fromMap(String id, Map<String, dynamic> map) {
@@ -40,7 +41,33 @@ class DrugModel {
 
       agent: map["agent"]?.toString() ?? "",
 
-      price: _parsePrice(map["price"]), search: [],
+      price: _parsePrice(map["price"]),
+
+      search: List<String>.from(map["search"] ?? []),
+    );
+  }
+
+  factory DrugModel.fromLocal(Map<String, dynamic> map) {
+    return DrugModel(
+      id: map["id"]?.toString() ?? "",
+
+      registration: map["registration"]?.toString() ?? "",
+
+      tradeName: map["tradeName"]?.toString() ?? "",
+
+      packSize: map["packSize"]?.toString() ?? "",
+
+      active1: map["active1"]?.toString() ?? "",
+
+      active2: map["active2"]?.toString() ?? "",
+
+      manufacturer: map["manufacturer"]?.toString() ?? "",
+
+      agent: map["agent"]?.toString() ?? "",
+
+      price: _parsePrice(map["price"]),
+
+      search: List<String>.from(map["search"] ?? []),
     );
   }
 
@@ -58,6 +85,8 @@ class DrugModel {
 
   Map<String, dynamic> toMap() {
     return {
+      "id": id,
+
       "registration": registration,
 
       "tradeName": tradeName,
@@ -73,6 +102,8 @@ class DrugModel {
       "agent": agent,
 
       "price": price,
+
+      "search": search,
     };
   }
 
@@ -103,12 +134,7 @@ class DrugModel {
   bool matches(String query) {
     query = query.toLowerCase().trim();
 
-    return tradeNameLower.contains(query) ||
-        active1Lower.contains(query) ||
-        active2Lower.contains(query) ||
-        registrationLower.contains(query) ||
-        manufacturer.toLowerCase().contains(query) ||
-        agent.toLowerCase().contains(query);
+    return search.any((item) => item.toLowerCase().contains(query));
   }
 
   int searchScore(String query) {
@@ -155,6 +181,8 @@ class DrugModel {
     String? agent,
 
     double? price,
+
+    List<String>? search,
   }) {
     return DrugModel(
       id: id ?? this.id,
@@ -173,7 +201,9 @@ class DrugModel {
 
       agent: agent ?? this.agent,
 
-      price: price ?? this.price, search: [],
+      price: price ?? this.price,
+
+      search: search ?? this.search,
     );
   }
 

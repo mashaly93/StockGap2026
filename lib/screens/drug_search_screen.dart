@@ -45,6 +45,8 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
       loading = false;
     });
+
+    print("Loaded drugs: ${allDrugs.length}");
   }
 
   void search(String value) {
@@ -63,7 +65,9 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
 
       final data = allDrugs
           .where((drug) {
-            return drug.search.any((item) => item.contains(query));
+            return drug.search.any(
+              (item) => item.toLowerCase().contains(query),
+            );
           })
           .take(20)
           .toList();
@@ -144,7 +148,9 @@ class _DrugSearchScreenState extends State<DrugSearchScreen> {
             child: results.isEmpty
                 ? Center(
                     child: Text(
-                      controller.text.isEmpty
+                      loading
+                          ? "Loading drugs..."
+                          : controller.text.isEmpty
                           ? "Start searching..."
                           : "No drugs found",
 
