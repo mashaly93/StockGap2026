@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1077807028936",
+    "project_id": "stockgap2026",
+    "storage_bucket": "stockgap2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1077807028936:android:e27b55bf7205d14e38a3fd",
+        "android_client_info": {
+          "package_name": "com.example.stockgap2026"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAx1tPfuN5e6G8tNF3gkFpkRa0lse32IjU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
