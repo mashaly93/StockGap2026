@@ -1,39 +1,50 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'Homescreen.dart';
 import 'OrderScreen.dart';
 import 'drug_search_screen.dart';
-import 'import_drug_screen.dart';
 
-class MainMenuScreen extends StatelessWidget {
+class MainMenuScreen extends StatefulWidget {
   final String storeCode;
   final Timestamp? expireDate;
+  final String role;
 
   const MainMenuScreen({
     super.key,
     required this.storeCode,
     required this.expireDate,
+    required this.role,
   });
 
   @override
+  State<MainMenuScreen> createState() => _MainMenuScreenState();
+}
+
+class _MainMenuScreenState extends State<MainMenuScreen> {
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove('username');
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => Homescreen()),
+      (route) => false,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isStore = widget.role == "store";
+
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
 
       appBar: AppBar(
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.upload_file),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ImportDrugScreen(),
-                ),
-              );
-            },
-          ),
-        ],
         automaticallyImplyLeading: false,
 
         backgroundColor: Colors.grey.shade100,
@@ -46,6 +57,14 @@ class MainMenuScreen extends StatelessWidget {
         ),
 
         centerTitle: true,
+
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xff0050c0)),
+
+            onPressed: logout,
+          ),
+        ],
       ),
 
       body: Center(
@@ -55,47 +74,74 @@ class MainMenuScreen extends StatelessWidget {
           runSpacing: 30,
 
           children: [
-            MenuCard(
-              title: "Generate Order",
+            // ==========================
+            // Pharmacy
+            // ==========================
+            if (!isStore)
+              MenuCard(
+                title: "Generate Order",
 
-              description: "Create pharmacy order Excel file",
+                description: "Create pharmacy order Excel file",
 
-              icon: Icons.inventory_2,
+                icon: Icons.inventory_2,
 
-              color: const Color(0xff0050c0),
+                color: const Color(0xff0050c0),
 
-              onTap: () {
-                Navigator.push(
-                  context,
+                onTap: () {
+                  Navigator.push(
+                    context,
 
-                  MaterialPageRoute(
-                    builder: (_) => OrderScreen(
-                      storeCode: storeCode,
+                    MaterialPageRoute(
+                      builder: (_) => OrderScreen(
+                        storeCode: widget.storeCode,
 
-                      expireDate: expireDate,
+                        expireDate: widget.expireDate,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
 
-            MenuCard(
-              title: "Drug Eye",
+            if (!isStore)
+              MenuCard(
+                title: "Drug Eye",
 
-              description: "Search drug information",
+                description: "Search drug information",
 
-              icon: Icons.medication,
+                icon: Icons.medication,
 
-              color: Colors.green,
+                color: Colors.green,
 
-              onTap: () {
-                Navigator.push(
-                  context,
+                onTap: () {
+                  Navigator.push(
+                    context,
 
-                  MaterialPageRoute(builder: (_) => const DrugSearchScreen()),
-                );
-              },
-            ),
+                    MaterialPageRoute(builder: (_) => const DrugSearchScreen()),
+                  );
+                },
+              ),
+
+            // ==========================
+            // Warehouse
+            // ==========================
+            if (isStore)
+              MenuCard(
+                title: "Inventory",
+
+                description: "Manage warehouse stock",
+
+                icon: Icons.warehouse,
+
+                color: Colors.orange,
+
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Inventory screen coming soon"),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -105,17 +151,26 @@ class MainMenuScreen extends StatelessWidget {
 
 class MenuCard extends StatelessWidget {
   final String title;
+
   final String description;
+
   final IconData icon;
+
   final Color color;
+
   final VoidCallback onTap;
 
   const MenuCard({
     super.key,
+
     required this.title,
+
     required this.description,
+
     required this.icon,
+
     required this.color,
+
     required this.onTap,
   });
 
@@ -128,12 +183,12 @@ class MenuCard extends StatelessWidget {
 
       child: Card(
         elevation: 5,
-        shadowColor: Colors.black12,
 
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
 
         child: Container(
           width: 280,
+
           height: 160,
 
           padding: const EdgeInsets.all(12),
@@ -144,10 +199,12 @@ class MenuCard extends StatelessWidget {
             children: [
               Container(
                 width: 65,
+
                 height: 65,
 
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withOpacity(.12),
+
                   shape: BoxShape.circle,
                 ),
 
@@ -158,16 +215,17 @@ class MenuCard extends StatelessWidget {
 
               Text(
                 title,
+
                 textAlign: TextAlign.center,
 
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 20,
+
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
                 ),
               ),
 
-              const SizedBox(height: 3),
+              const SizedBox(height: 5),
 
               Text(
                 description,

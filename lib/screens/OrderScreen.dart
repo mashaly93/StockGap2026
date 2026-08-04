@@ -1,26 +1,26 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
+
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'Homescreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'Homescreen.dart';
 import 'history_screen.dart';
 import '../matcher/matcher.dart';
 
 class OrderScreen extends StatefulWidget {
   static const routeName = "orderScreen";
+
   final String storeCode;
+
   final Timestamp? expireDate;
 
-  const OrderScreen({
-    super.key,
-    required this.storeCode,
-    this.expireDate,
-  });
+  const OrderScreen({super.key, required this.storeCode, this.expireDate});
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
@@ -28,15 +28,120 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   late final storeCode = widget.storeCode;
+
+  // Missing Items Excel
+
   List<List<String>> inventoryRows = [];
+
+  // Warehouse Firebase Inventory
+
   List<List<String>> orderRows = [];
-  List<String> orders = [];
+
   Uint8List? generatedFileBytes;
+
   bool isGenerating = false;
+
   String? inventoryFileName;
-  String? orderFileName;
 
   String statusText = "";
+
+  // Warehouses
+
+  List<Map<String, dynamic>> warehouses = [];
+
+  String? selectedWarehouseId;
+
+  bool loadingWarehouses = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadWarehouses();
+  }
+
+  // ==========================
+  // Logout
+  // ==========================
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove("username");
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+
+      MaterialPageRoute(builder: (_) => Homescreen()),
+
+      (route) => false,
+    );
+  }
+
+  // ==========================
+  // Load Warehouses
+  // ==========================
+
+  Future<void> loadWarehouses() async {
+    setState(() {
+      loadingWarehouses = true;
+    });
+
+    final snap = await FirebaseFirestore.instance
+        .collection("stores")
+        .where("role", isEqualTo: "store")
+        .get();
+
+    warehouses = snap.docs.map((doc) {
+      final data = doc.data();
+
+      return {"id": doc.id, "name": data["name"] ?? doc.id};
+    }).toList();
+
+    setState(() {
+      loadingWarehouses = false;
+    });
+  }
+
+  // ==========================
+  // Load Warehouse Inventory
+  // ==========================
+
+  Future<void> loadWarehouseItems(String warehouseId) async {
+    setState(() {
+      statusText = "Loading warehouse inventory...";
+    });
+
+    final snap = await FirebaseFirestore.instance
+        .collection("stores")
+        .doc(warehouseId)
+        .collection("inventory")
+        .get();
+
+    orderRows = snap.docs.map((doc) {
+      final data = doc.data();
+
+      return [
+        data["name"]?.toString() ?? "",
+
+        data["qty"]?.toString() ?? "0",
+
+        data["purchasePrice"]?.toString() ?? "",
+
+        data["salePrice"]?.toString() ?? "",
+      ];
+    }).toList();
+
+    setState(() {
+      statusText = "${orderRows.length} items loaded ✔";
+    });
+  }
+
+  // ==========================
+  // Excel Reader
+  // ==========================
 
   List<List<String>> excelToRows(Uint8List bytes) {
     final excel = Excel.decodeBytes(bytes);
@@ -45,53 +150,33 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final table = excel.tables.values.first;
 
-    return table.rows
-        .map((row) => row.map((e) => e?.value.toString() ?? "").toList())
-        .toList();
+    return table.rows.map((row) {
+      return row.map((cell) {
+        return cell?.value.toString() ?? "";
+      }).toList();
+    }).toList();
   }
 
-  Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('username');
-
-    if (!mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => Homescreen()),
-          (route) => false,
-    );
-  }
-
-  Future<List<List<String>>> processFile(File file) async {
-    final path = file.path.toLowerCase();
-
-    if (path.endsWith(".xlsx")) {
-      final bytes = await file.readAsBytes();
-      return excelToRows(bytes);
-    }
-
-    if (path.endsWith(".pdf")) {
-      final csv = await convertPdfToCsv(file);
-      return await csvToRows(csv);
-    }
-
-    throw Exception("Only Excel or PDF files are supported.");
-  }
+  // ==========================
+  // Upload Missing Items
+  // ==========================
 
   Future<void> pickInventory() async {
     try {
-      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
+      final type = XTypeGroup(label: "Excel", extensions: ["xlsx"]);
 
-      final xfile = await openFile(acceptedTypeGroups: [type]);
+      final file = await openFile(acceptedTypeGroups: [type]);
 
-      if (xfile == null) return;
+      if (file == null) return;
 
-      inventoryRows = await processFile(File(xfile.path));
-      inventoryFileName = xfile.name;
+      final bytes = await File(file.path).readAsBytes();
+
+      inventoryRows = excelToRows(bytes);
+
+      inventoryFileName = file.name;
 
       setState(() {
-        statusText = "Missing Items Loaded Successfully";
+        statusText = "Missing Items Loaded Successfully ✔";
       });
     } catch (e) {
       setState(() {
@@ -100,256 +185,144 @@ class _OrderScreenState extends State<OrderScreen> {
     }
   }
 
-  Future<void> pickOrder() async {
-    try {
-      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
-
-      final xfile = await openFile(acceptedTypeGroups: [type]);
-
-      if (xfile == null) return;
-
-      orderRows = await processFile(File(xfile.path));
-
-      orderFileName = xfile.name;
-
-      setState(() {
-        statusText = "Store List  Loaded Successfully";
-      });
-    } catch (e) {
-      setState(() {
-        statusText = e.toString();
-      });
-    }
-  }
+  // ==========================
+  // Generate Order
+  // ==========================
 
   Future<void> generateOrder() async {
     if (inventoryRows.isEmpty || orderRows.isEmpty) {
       setState(() {
-        statusText = "Please select both files.";
+        statusText = "Upload Missing Items and select Warehouse";
       });
+
       return;
     }
 
     setState(() {
       isGenerating = true;
+
       statusText = "Processing...";
     });
-    await Future.delayed(const Duration(milliseconds: 100));
-
-
 
     final excel = Excel.createExcel();
 
-    final resultSheet = excel['Sheet1'];
-    final missingSheet = excel['Missing'];
+    final resultSheet = excel["Sheet1"];
 
+    final missingSheet = excel["Missing"];
 
     resultSheet.appendRow([
       TextCellValue("Item"),
+
       TextCellValue("Qty"),
+
       TextCellValue("Matched Item"),
+
       TextCellValue("Purchase Price"),
+
       TextCellValue("Sale Price"),
-      TextCellValue("Sale Total"),
+
+      TextCellValue("Total"),
     ]);
 
+    double totalSale = 0;
 
+    // دمج الأصناف المتكررة
 
-
-    double grandSaleTotal = 0;
-
-
-    // استخراج الأسعار
-    List<double> extractPrices(List<String> row) {
-
-      final prices = <double>[];
-
-
-      for (final cell in row) {
-
-        final text = cell.trim();
-
-
-        if (text.contains('%')) continue;
-
-
-        final value = double.tryParse(
-          text.replaceAll(',', ''),
-        );
-
-
-        if (value != null &&
-            value > 0 &&
-            value < 100 &&
-            !(
-                prices.isEmpty &&
-                    value == value.roundToDouble()
-            )
-        ) {
-          prices.add(value);
-        }
-      }
-
-
-      return prices;
-    }
-
-
-
-    // دمج الأصناف المتكررة في Missing Items
-    final Map<String, Map<String, dynamic>> mergedItems = {};
-
+    final Map<String, dynamic> merged = {};
 
     for (int i = 1; i < inventoryRows.length; i++) {
+      final row = inventoryRows[i];
 
-
-      final missingRow = inventoryRows[i];
-
-
-      if (missingRow.isEmpty) continue;
-
-
+      if (row.isEmpty) continue;
 
       String item = "";
 
       int qty = 0;
 
-
-
-      // استخراج الاسم والكمية
-      for (final cell in missingRow) {
-
-
-        if (RegExp(r'^\d+$').hasMatch(cell.trim())) {
-
-
-          qty = int.tryParse(cell.trim()) ?? 0;
+      for (final c in row) {
+        if (RegExp(r'^\d+$').hasMatch(c.trim())) {
+          qty = int.tryParse(c.trim()) ?? 0;
 
           break;
-
         }
 
-
-        item += "$cell ";
-
+        item += "$c ";
       }
-
-
 
       item = item.trim();
 
-
-
       if (item.isEmpty) continue;
-
-
 
       final key = Matcher.normalize(item);
 
-
-
-      // تجميع الكمية لو الصنف مكرر
-      if (mergedItems.containsKey(key)) {
-
-
-        mergedItems[key]!["qty"] += qty;
-
-
+      if (merged.containsKey(key)) {
+        merged[key]["qty"] += qty;
       } else {
-
-
-        mergedItems[key] = {
-
-          "item": item,
-
-          "qty": qty,
-
-        };
-
+        merged[key] = {"item": item, "qty": qty};
       }
-
     }
 
-
-
-// البحث بعد دمج الأصناف
     final similarItems = <Map<String, dynamic>>[];
-    final lowSimilarItems = <Map<String, dynamic>>[];
 
-    for (final data in mergedItems.values) {
-      final item = data["item"] as String;
-      final qty = data["qty"] as int;
+    final notFound = <Map<String, dynamic>>[];
+
+    for (final data in merged.values) {
+      final item = data["item"];
+
+      final qty = data["qty"];
 
       bool found = false;
 
-      double bestScore = 0;
+      double best = 0;
+
       String bestItem = "";
 
-      for (int j = 1; j < orderRows.length; j++) {
-        final priceRow = orderRows[j];
+      for (final warehouse in orderRows) {
+        final warehouseItem = warehouse[0];
 
-        if (priceRow.isEmpty) continue;
+        final result = Matcher.findBestMatch(Matcher.normalize(item), [
+          {
+            "original": warehouseItem,
 
-        String priceItem = "";
-        int startIndex = 0;
+            "normalized": Matcher.normalize(warehouseItem),
+          },
+        ]);
 
-        if (priceRow.isNotEmpty &&
-            RegExp(r'^\d+$').hasMatch(priceRow[0].trim())) {
-          startIndex = 1;
+        if (result.score > best) {
+          best = result.score.toDouble();
+
+          bestItem = warehouseItem;
         }
 
-        for (int x = startIndex; x < priceRow.length; x++) {
-          final cell = priceRow[x].trim();
+        if (result.score >= 60) {
+          double purchase = 0;
 
-          if (RegExp(r'^\d+\.\d+$').hasMatch(cell)) {
-            break;
-          }
+          double sale = 0;
 
-          priceItem += "$cell ";
-        }
+          double total = 0;
 
-        priceItem = priceItem.trim();
+          if (warehouse.length >= 4) {
+            purchase = double.tryParse(warehouse[2]) ?? 0;
 
-        if (priceItem.isEmpty) continue;
+            sale = double.tryParse(warehouse[3]) ?? 0;
 
-        final score = Matcher.findBestMatch(
-          Matcher.normalize(item),
-          [
-            {
-              "original": priceItem,
-              "normalized": Matcher.normalize(priceItem),
-            }
-          ],
-        );
+            total = sale * qty;
 
-        if (score.score > bestScore) {
-          bestScore = score.score.toDouble();
-          bestItem = priceItem;
-        }
-
-        if (score.matchedItem != null && score.score >= 60) {
-
-          final prices = extractPrices(priceRow);
-
-          double purchasePrice = 0;
-          double salePrice = 0;
-          double saleTotal = 0;
-
-          if (prices.length >= 2) {
-            purchasePrice = prices[0];
-            salePrice = prices[1];
-            saleTotal = salePrice * qty;
-
-            grandSaleTotal += saleTotal;
+            totalSale += total;
           }
 
           resultSheet.appendRow([
             TextCellValue(item),
+
             TextCellValue(qty.toString()),
-            TextCellValue(priceItem),
-            TextCellValue(purchasePrice.toStringAsFixed(3)),
-            TextCellValue(salePrice.toStringAsFixed(3)),
-            TextCellValue(saleTotal.toStringAsFixed(3)),
+
+            TextCellValue(warehouseItem),
+
+            TextCellValue(purchase.toString()),
+
+            TextCellValue(sale.toString()),
+
+            TextCellValue(total.toString()),
           ]);
 
           found = true;
@@ -359,71 +332,69 @@ class _OrderScreenState extends State<OrderScreen> {
       }
 
       if (!found) {
-        final row = {
+        final m = {
           "item": item,
+
           "qty": qty,
+
           "similar": bestItem,
-          "score": bestScore.toStringAsFixed(0),
+
+          "score": best.toStringAsFixed(0),
         };
 
-        if (bestScore >= 40) {
-          similarItems.add(row);
-        } else {
-          lowSimilarItems.add(row);
-        }
+        if (best >= 40)
+          similarItems.add(m);
+        else
+          notFound.add(m);
       }
     }
+    // ==========================
+    // Missing Sheet
+    // ==========================
 
-// عنوان الشيت
     missingSheet.appendRow([
       TextCellValue("Item"),
+
       TextCellValue("Qty"),
+
       TextCellValue("Similar Item"),
+
       TextCellValue("Match %"),
     ]);
-    missingSheet.appendRow([
-      TextCellValue("POSSIBLE MATCHES ITEMS"),
-    ]);
 
-// الأصناف من 40 إلى أقل من 60
+    missingSheet.appendRow([TextCellValue("POSSIBLE MATCHES")]);
+
     for (final e in similarItems) {
       missingSheet.appendRow([
         TextCellValue(e["item"]),
+
         TextCellValue(e["qty"].toString()),
+
         TextCellValue(e["similar"]),
+
         TextCellValue("${e["score"]}%"),
       ]);
     }
 
-// فاصل
     missingSheet.appendRow([]);
-    missingSheet.appendRow([
-      TextCellValue("================ NOT MATCHED ITEMS (LESS SIMILARITY) ================"),
-    ]);
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-      TextCellValue("Similar Item"),
-      TextCellValue("Match %"),
-    ]);
 
-// أقل من 40
-    for (final e in lowSimilarItems) {
+    missingSheet.appendRow([TextCellValue("NOT MATCHED ITEMS")]);
+
+    for (final e in notFound) {
       missingSheet.appendRow([
         TextCellValue(e["item"]),
+
         TextCellValue(e["qty"].toString()),
+
         TextCellValue(e["similar"]),
 
+        TextCellValue("${e["score"]}%"),
       ]);
     }
 
-    // المجموع في النهاية
-
     resultSheet.appendRow([]);
 
-
     resultSheet.appendRow([
-
       TextCellValue(""),
 
       TextCellValue(""),
@@ -434,398 +405,268 @@ class _OrderScreenState extends State<OrderScreen> {
 
       TextCellValue(""),
 
-      TextCellValue(
-        grandSaleTotal.toStringAsFixed(3),
-      ),
-
+      TextCellValue(totalSale.toStringAsFixed(3)),
     ]);
 
-
-
-    generatedFileBytes =
-        Uint8List.fromList(
-          excel.encode()!,
-        );
-
-
+    generatedFileBytes = Uint8List.fromList(excel.encode()!);
 
     setState(() {
-
       isGenerating = false;
+
       statusText = "Done ✔";
-
     });
-
-
   }
+
+  // ==========================
+  // Reset
+  // ==========================
+
   void resetScreen() {
     setState(() {
       inventoryRows.clear();
+
       orderRows.clear();
+
       generatedFileBytes = null;
+
       inventoryFileName = null;
-      orderFileName = null;
-      statusText = "Ready for a new order";
+
+      selectedWarehouseId = null;
+
+      statusText = "Ready";
     });
   }
+
+  // ==========================
+  // Save History
+  // ==========================
+
   Future<void> saveOrderLocally({
     required String fileName,
+
     required String filePath,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
-    final List<String> history =
-        prefs.getStringList("orders") ?? [];
+    final history = prefs.getStringList("orders") ?? [];
 
     final order = {
       "fileName": fileName,
+
       "filePath": filePath,
+
       "date": DateFormat("yyyy-MM-dd").format(DateTime.now()),
+
       "items": inventoryRows.length,
     };
 
     history.add(jsonEncode(order));
 
     await prefs.setStringList("orders", history);
-
-
   }
-  Future<void> showOrdersHistory() async {
-    final prefs = await SharedPreferences.getInstance();
 
-    List<String> orders = prefs.getStringList("orders") ?? [];
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Orders History"),
-        content: SizedBox(
-          height: 300,
-          width: 300,
-          child: ListView(
-            children: orders
-                .map((e) => Text(e))
-                .toList(),
-          ),
-        ),
-      ),
-    );
-  }
+  // ==========================
+  // Download Excel
+  // ==========================
 
   Future<void> downloadFile(Uint8List bytes) async {
-    final customName = await askFileName();
-
-    if(customName == null) return;
-
-    final today =
-    DateFormat("yyyy-MM-dd").format(DateTime.now());
-
-    final fileName = customName.isEmpty
-        ? "Order_$today.xlsx"
-        : "$customName.xlsx";
-    final location = await getSaveLocation(suggestedName: fileName);
+    final location = await getSaveLocation(suggestedName: "Order.xlsx");
 
     if (location == null) return;
 
-    final filePath = location.path.endsWith('.xlsx')
+    final path = location.path.endsWith(".xlsx")
         ? location.path
-        : '${location.path}.xlsx';
+        : "${location.path}.xlsx";
 
-    final file = File(filePath);
+    final file = File(path);
+
     await file.writeAsBytes(bytes);
+
+    await saveOrderLocally(fileName: path.split("\\").last, filePath: path);
 
     setState(() {
       statusText = "Saved Successfully ✔";
-
     });
-    await saveOrderLocally(
-      fileName: fileName,
-      filePath: filePath,
-    );
 
+    await Process.run('cmd', ['/c', 'start', '', path]);
 
-    await Process.run('cmd', ['/c', 'start', '', filePath]);
     resetScreen();
   }
-  Future<List<String>> getOrders() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList("orders") ?? [];
-  }
 
-
-  Future<File> convertPdfToCsv(File pdfFile) async {
-    final tempDir = Directory.systemTemp;
-
-    final outputPath =
-        "${tempDir.path}\\converted_${DateTime.now().millisecondsSinceEpoch}.csv";
-
-    // مسار مجلد البرنامج
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-
-    // Java الموجودة مع البرنامج
-    final javaPath = "$exeDir\\jre\\bin\\java.exe";
-
-    // tabula.jar الموجودة مع البرنامج
-    final tabulaPath = "$exeDir\\tools\\tabula.jar";
-
-    final result = await Process.run(
-      javaPath,
-      [
-        "-jar",
-        tabulaPath,
-        "-p",
-        "all",
-        "-f",
-        "CSV",
-        "-o",
-        outputPath,
-        pdfFile.path,
-      ],
-    );
-
-    if (result.exitCode != 0) {
-      throw Exception(result.stderr.toString());
-    }
-
-    return File(outputPath);
-  }
-
-  Future<List<List<String>>> csvToRows(File file) async {
-    final text = await file.readAsString();
-
-    return text
-        .split("\n")
-        .where((e) => e.trim().isNotEmpty)
-        .map(
-          (line) =>
-          line.split(",").map((e) => e.replaceAll('"', '').trim()).toList(),
-    )
-        .toList();
-  }
-  Future<String?> askFileName() async {
-    final controller = TextEditingController();
-
-    return await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Save Order"),
-
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: "File Name",
-          ),
-        ),
-
-        actions: [
-
-          TextButton(
-            onPressed: (){
-              Navigator.pop(context);
-            },
-            child: const Text("Cancel"),
-          ),
-
-          ElevatedButton(
-            onPressed: (){
-              Navigator.pop(
-                context,
-                controller.text.trim(),
-              );
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      ),
-    );
-  }
+  // ==========================
+  // BUILD UI
+  // ==========================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey.shade100,
+
       appBar: AppBar(
-
-        leading: IconButton(
-          color: Color(0xff0050c0),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-
-            Navigator.pop(context);
-
-          },
-        ),
-
-
-        actions: [
-
-          Center(
-            child: IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () {
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HistoryScreen(),
-                  ),
-                );
-
-              },
-            ),
-          ),
-
-
-          IconButton(
-            icon: const Icon(
-              Icons.logout,
-              color: Color(0xff0050c0),
-            ),
-            onPressed: logout,
-          ),
-
-        ],
-
-
         backgroundColor: Colors.grey.shade100,
 
         elevation: 0,
 
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xff0050c0)),
 
-        centerTitle: false,
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
 
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history, color: Color(0xff0050c0)),
 
+            onPressed: () {
+              Navigator.push(
+                context,
 
+                MaterialPageRoute(builder: (_) => HistoryScreen()),
+              );
+            },
+          ),
 
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xff0050c0)),
+
+            onPressed: logout,
+          ),
+        ],
       ),
-      backgroundColor: Colors.grey.shade100,
+
       body: Center(
         child: SingleChildScrollView(
           child: SizedBox(
             width: 800,
+
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 10),
 
+              child: Column(
+                children: [
                   const Text(
                     "Stock Gap Generator",
-                    textAlign: TextAlign.center,
+
                     style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
                   ),
 
                   const SizedBox(height: 40),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildUploadCard(
-                          title: "Missing Items",
-                          fileName: inventoryFileName,
-                          icon: Icons.inventory,
-                          onPressed: pickInventory,
-                          iconColor: Color(0xff0050c0),
-                        ),
-                      ),
+                  _buildUploadCard(
+                    title: "Missing Items",
 
-                      const SizedBox(width: 20),
+                    fileName: inventoryFileName,
 
-                      Expanded(
-                        child: _buildUploadCard(
-                          title: "Price List",
-                          fileName: orderFileName,
-                          icon: Icons.receipt_long,
-                          onPressed: pickOrder,
-                          iconColor: Color(0xff0050c0),
-                        ),
-                      ),
-                    ],
+                    icon: Icons.inventory,
+
+                    onPressed: pickInventory,
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 25),
+
+                  Card(
+                    elevation: 4,
+
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+
+                      child: Column(
+                        children: [
+                          const Text(
+                            "Select Warehouse",
+
+                            style: TextStyle(
+                              fontSize: 18,
+
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 15),
+
+                          loadingWarehouses
+                              ? const CircularProgressIndicator()
+                              : DropdownButtonFormField<String>(
+                                  value: selectedWarehouseId,
+
+                                  hint: const Text("Choose Warehouse"),
+
+                                  items: warehouses.map((w) {
+                                    return DropdownMenuItem<String>(
+                                      value: w["id"],
+
+                                      child: Text(w["name"]),
+                                    );
+                                  }).toList(),
+
+                                  onChanged: (value) async {
+                                    if (value == null) return;
+
+                                    setState(() {
+                                      selectedWarehouseId = value;
+                                    });
+
+                                    await loadWarehouseItems(value);
+                                  },
+                                ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
 
                   SizedBox(
-                    height: 55,
                     width: double.infinity,
+
+                    height: 55,
+
                     child: ElevatedButton.icon(
                       onPressed:
-                      (inventoryFileName != null &&
-                          orderFileName != null &&
-                          !isGenerating)
+                          inventoryRows.isNotEmpty &&
+                              orderRows.isNotEmpty &&
+                              !isGenerating
                           ? generateOrder
                           : null,
 
                       icon: isGenerating
-                          ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                          : Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                      ),
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Icon(Icons.play_arrow),
 
                       label: Text(
                         isGenerating ? "Processing..." : "Generate Order",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.white,
-                        ),
                       ),
 
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
 
-                        disabledBackgroundColor: const Color(0xff0050c0),
                         foregroundColor: Colors.white,
-
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 25),
+                  const SizedBox(height: 20),
 
                   if (generatedFileBytes != null)
-                    SizedBox(
-                      height: 55,
-                      child: ElevatedButton.icon(
-                        onPressed: () => downloadFile(generatedFileBytes!),
-                        icon: const Icon(
-                          Icons.download,
-                          color: Color(0xff0050c0),
-                        ),
-                        label: Center(
-                          child: const Text(
-                            "Save Excel",
-                            style: TextStyle(color: Color(0xff0050c0)),
-                          ),
-                        ),
-                      ),
+                    ElevatedButton.icon(
+                      onPressed: () => downloadFile(generatedFileBytes!),
+
+                      icon: const Icon(Icons.download),
+
+                      label: const Text("Save Excel"),
                     ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
 
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          statusText,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xff0050c0),
-                          ),
-                        ),
-                      ),
+                  Text(
+                    statusText,
+
+                    style: const TextStyle(
+                      color: Color(0xff0050c0),
+
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
@@ -834,26 +675,65 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        color: Colors.transparent,
+    );
+  }
+
+  Widget _buildUploadCard({
+    required String title,
+
+    required String? fileName,
+
+    required IconData icon,
+
+    required VoidCallback onPressed,
+  }) {
+    return Card(
+      elevation: 4,
+
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              storeCode,
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
+            Icon(
+              fileName != null ? Icons.check_circle : icon,
+              size: 50,
+              color: fileName != null
+                  ? Colors.green
+                  : const Color(0xff0050c0),
+            ),
+
+            const SizedBox(width: 20),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  Text(
+                    fileName ?? "No file selected",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-            Text(
-              widget.expireDate != null
-                  ? "Valid Until: ${widget.expireDate!.toDate().day}/${widget.expireDate!.toDate().month}/${widget.expireDate!.toDate().year}"
-                  : "No Validity Date",
-              style: const TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
+
+            const SizedBox(width: 15),
+
+            ElevatedButton(
+              onPressed: onPressed,
+              child: Text(
+                fileName == null ? "Upload" : "Change",
               ),
             ),
           ],
@@ -861,50 +741,4 @@ class _OrderScreenState extends State<OrderScreen> {
       ),
     );
   }
-}
-
-Widget _buildUploadCard({
-  required String title,
-  required String? fileName,
-  required IconData icon,
-  required Color iconColor,
-  required VoidCallback onPressed,
-}) {
-  final uploaded = fileName != null;
-
-  return Card(
-    elevation: 4,
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Icon(
-            uploaded ? Icons.check_circle : icon,
-            size: 50,
-            color: uploaded ? Colors.green : Color(0xff0050c0),
-          ),
-          const SizedBox(height: 15),
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            fileName ?? "No file selected",
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: onPressed,
-            child: Text(
-              uploaded ? "Change File" : "Upload",
-              style: TextStyle(color: Color(0xff0050c0)),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }

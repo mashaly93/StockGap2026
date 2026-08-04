@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:stockgap2026/screens/store_inventory_screen.dart';
 import 'OrderScreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -143,8 +144,6 @@ class _HomescreenState extends State<Homescreen> {
                               setState(() => isLoading = true);
 
                               try {
-
-
                                 final username = codeController.text.trim();
                                 final password = passwordController.text.trim();
 
@@ -153,30 +152,44 @@ class _HomescreenState extends State<Homescreen> {
 
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text("Enter username and password"),
+                                      content: Text(
+                                        "Enter username and password",
+                                      ),
                                     ),
                                   );
                                   return;
                                 }
 
-                                final result = await FirebaseFirestore.instance
+                                QuerySnapshot<Map<String, dynamic>> result;
+
+
+// البحث أولاً في users (الصيدليات)
+                                result = await FirebaseFirestore.instance
                                     .collection("users")
-                                    .where(
-                                  "username",
-                                  isEqualTo: username,
-                                )
+                                    .where("username", isEqualTo: username)
                                     .limit(1)
                                     .get(
-                                  const GetOptions(
-                                    source: Source.server,
-                                  ),
+                                  const GetOptions(source: Source.server),
                                 );
 
 
-
-
-
+// لو مش موجود يبحث في stores (المخازن)
                                 if (result.docs.isEmpty) {
+
+                                  result = await FirebaseFirestore.instance
+                                      .collection("stores")
+                                      .where("username", isEqualTo: username)
+                                      .limit(1)
+                                      .get(
+                                    const GetOptions(source: Source.server),
+                                  );
+
+                                }
+
+
+// غير موجود في الاثنين
+                                if (result.docs.isEmpty) {
+
                                   setState(() => isLoading = false);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -186,18 +199,19 @@ class _HomescreenState extends State<Homescreen> {
                                   );
 
                                   return;
+
                                 }
 
 
+
                                 final doc = result.docs.first;
+
                                 final data = doc.data();
 
                                 final docRef = doc.reference;
 
-
                                 // PASSWORD
                                 if (data["password"] != password) {
-
                                   setState(() => isLoading = false);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -209,11 +223,8 @@ class _HomescreenState extends State<Homescreen> {
                                   return;
                                 }
 
-
-
                                 // ACTIVE
                                 if (data["active"] != true) {
-
                                   setState(() => isLoading = false);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -225,18 +236,17 @@ class _HomescreenState extends State<Homescreen> {
                                   return;
                                 }
 
-
-
                                 // EXPIRE DATE
 
-                                final expireDate = data["expireDate"] is Timestamp
+                                final expireDate =
+                                    data["expireDate"] is Timestamp
                                     ? data["expireDate"] as Timestamp
                                     : null;
 
-
                                 if (expireDate != null &&
-                                    DateTime.now().isAfter(expireDate.toDate())) {
-
+                                    DateTime.now().isAfter(
+                                      expireDate.toDate(),
+                                    )) {
                                   setState(() => isLoading = false);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -248,143 +258,120 @@ class _HomescreenState extends State<Homescreen> {
                                   return;
                                 }
 
-
-
                                 // DEVICE SYSTEM
 
-                                final prefs = await SharedPreferences.getInstance();
-
+                                final prefs =
+                                    await SharedPreferences.getInstance();
 
                                 String deviceId =
                                     prefs.getString("deviceId") ?? "";
 
-
                                 if (deviceId.isEmpty) {
+                                  deviceId = DateTime.now()
+                                      .microsecondsSinceEpoch
+                                      .toString();
 
-                                  deviceId =
-                                      DateTime.now()
-                                          .microsecondsSinceEpoch
-                                          .toString();
-
-
-                                  await prefs.setString(
-                                    "deviceId",
-                                    deviceId,
-                                  );
+                                  await prefs.setString("deviceId", deviceId);
                                 }
 
-
-
-                                List devices = List.from(
-                                  data["devices"] ?? [],
-                                );
-
-
+                                List devices = List.from(data["devices"] ?? []);
 
                                 // تنظيف القيم الغلط
                                 devices = devices
-                                    .where((d)=> d is Map)
-                                    .map((d)=> Map<String,dynamic>.from(d))
+                                    .where((d) => d is Map)
+                                    .map((d) => Map<String, dynamic>.from(d))
                                     .toList();
-
-
 
                                 // هل الجهاز موجود؟
                                 bool exists = devices.any(
-                                      (d)=> d["deviceId"] == deviceId,
+                                  (d) => d["deviceId"] == deviceId,
                                 );
 
-
-
-                                int maxDevices =
-                                    data["maxDevices"] ?? 1;
-
-
+                                int maxDevices = data["maxDevices"] ?? 1;
 
                                 if (!exists) {
-
                                   if (devices.length >= maxDevices) {
-
                                     setState(() => isLoading = false);
 
-
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(
+                                    ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content:
-                                        Text("Too many devices logged in"),
+                                        content: Text(
+                                          "Too many devices logged in",
+                                        ),
                                       ),
                                     );
 
                                     return;
                                   }
 
-
-
                                   devices.add({
-
                                     "deviceId": deviceId,
 
-                                    "deviceName":
-                                    "Flutter Windows",
+                                    "deviceName": "Flutter Windows",
 
-                                    "loginTime":
-                                    DateTime.now()
+                                    "loginTime": DateTime.now()
                                         .toIso8601String(),
-
                                   });
 
-
-                                  await docRef.update({
-
-                                    "devices": devices,
-
-                                  });
-
+                                  await docRef.update({"devices": devices});
                                 }
 
-
-
                                 // SAVE LOGIN
+
+                                final role = data["role"] ?? "pharmacy";
 
                                 await prefs.setString(
                                   "username",
                                   username,
                                 );
 
+                                await prefs.setString(
+                                  "role",
+                                  role,
+                                );
 
 
                                 setState(() => isLoading = false);
 
 
+// المخزن يرفع ملفه
+                                if (role == "store") {
 
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MainMenuScreen(
-                                      storeCode: username,
-                                      expireDate: expireDate,
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => StoreInventoryScreen(
+                                        storeCode: username,
+                                        expireDate: expireDate,
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
+
+                                }
 
 
+// الصيدلية تعمل طلب
+                                else {
 
-                              } catch(e,stack){
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => MainMenuScreen(
+                                        storeCode: username,
+                                        expireDate: expireDate, role: '',
+                                      ),
+                                    ),
+                                  );
 
+                                }
+                              } catch (e, stack) {
                                 print(e);
                                 print(stack);
 
                                 setState(() => isLoading = false);
 
-
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      e.toString(),
-                                    ),
-                                  ),
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.toString())),
                                 );
                               }
                             },
@@ -406,8 +393,8 @@ class _HomescreenState extends State<Homescreen> {
 
                             child: isLoading
                                 ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
+                                    color: Colors.white,
+                                  )
                                 : const Text("Login"),
                           ),
                         ),
@@ -424,23 +411,16 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   Future<void> checkLogin() async {
-
-    if(isCheckingLogin) return;
+    if (isCheckingLogin) return;
 
     isCheckingLogin = true;
 
+    final prefs = await SharedPreferences.getInstance();
 
-    final prefs =
-    await SharedPreferences.getInstance();
-
-
-    final savedUser =
-    prefs.getString("username");
-
+    final savedUser = prefs.getString("username");
 
     // لا تدخل تلقائي حاليا
     // خلي المستخدم يعمل Login كل مرة
-
 
     isCheckingLogin = false;
   }
@@ -462,6 +442,7 @@ class _HomescreenState extends State<Homescreen> {
 
     return deviceId;
   }
+
   Future<void> registerDevice({
     required String deviceId,
     required String deviceName,
@@ -471,9 +452,7 @@ class _HomescreenState extends State<Homescreen> {
     required Function(String) show,
     required VoidCallback stopLoading,
   }) async {
-
-    bool alreadyExists =
-    devices.any((d) => d["deviceId"] == deviceId);
+    bool alreadyExists = devices.any((d) => d["deviceId"] == deviceId);
 
     if (!alreadyExists) {
       if (devices.length >= maxDevices) {
@@ -488,11 +467,7 @@ class _HomescreenState extends State<Homescreen> {
         "loginTime": DateTime.now().toIso8601String(),
       });
 
-
-      await docRef.update({
-        "devices": devices,
-      });
-
+      await docRef.update({"devices": devices});
     }
   }
 }
