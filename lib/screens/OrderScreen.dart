@@ -116,9 +116,6 @@ class _OrderScreenState extends State<OrderScreen> {
       for (final doc in snap.docs) {
         final data = doc.data();
 
-        debugPrint("---------------------------------");
-        debugPrint("Warehouse ID: ${doc.id}");
-        debugPrint("Warehouse data: $data");
 
         final name = data["name"]?.toString().trim() ?? "";
 
@@ -128,9 +125,7 @@ class _OrderScreenState extends State<OrderScreen> {
         });
       }
 
-      debugPrint("---------------------------------");
-      debugPrint("Warehouses loaded: ${loadedWarehouses.length}");
-      debugPrint("=================================");
+
 
       if (!mounted) return;
 
@@ -141,11 +136,7 @@ class _OrderScreenState extends State<OrderScreen> {
         statusText = loadedWarehouses.isEmpty ? "No warehouses found." : "";
       });
     } catch (e, stackTrace) {
-      debugPrint("=================================");
-      debugPrint("FAILED TO LOAD WAREHOUSES");
-      debugPrint("Error: $e");
-      debugPrint("StackTrace: $stackTrace");
-      debugPrint("=================================");
+
 
       if (!mounted) return;
 
@@ -691,7 +682,7 @@ class _OrderScreenState extends State<OrderScreen> {
             TextCellValue(qty.toString()),
             TextCellValue(bestItem),
             TextCellValue(purchase.toStringAsFixed(3)),
-            TextCellValue(sale.toStringAsFixed(3)),
+
             TextCellValue(total.toStringAsFixed(3)),
           ]);
 

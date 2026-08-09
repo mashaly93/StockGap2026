@@ -1,9 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import 'Homescreen.dart';
@@ -27,9 +28,19 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // SETTINGS
   // ============================================================
 
-  // Firestore يسمح حتى 500 عملية في WriteBatch.
-  // نستخدم 400 كحد آمن.
-  static const int batchSize = 400;
+  // Firestore maximum is 500.
+  // 200 is safer for slower connections.
+  static const int batchSize = 200;
+
+  // Do NOT run multiple Firebase commits at the same time.
+  // Sequential commits are much more stable.
+  static const int parallelBatches = 1;
+
+  // Maximum time for one Firebase commit.
+  static const Duration firebaseTimeout = Duration(seconds: 180);
+
+  // Number of retry attempts.
+  static const int maxRetries = 3;
 
   // ============================================================
   // STATE
@@ -38,12 +49,15 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   bool uploading = false;
 
   String status = "";
+
   String currentStage = "";
 
   int processedItems = 0;
+
   int totalItems = 0;
 
   int currentBatch = 0;
+
   int totalBatches = 0;
 
   double progress = 0;
@@ -61,34 +75,86 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
     final sheet = excel.tables.values.first;
 
-    final rows = <List<String>>[];
-
-    for (final row in sheet.rows) {
-      final convertedRow = <String>[];
-
-      for (final cell in row) {
+    return sheet.rows.map((row) {
+      return row.map((cell) {
         if (cell == null) {
-          convertedRow.add("");
-          continue;
+          return "";
         }
 
         try {
           final value = cell.value;
 
           if (value == null) {
-            convertedRow.add("");
-          } else {
-            convertedRow.add(value.toString().trim());
+            return "";
           }
+
+          return value.toString().trim();
         } catch (_) {
-          convertedRow.add(cell.toString().trim());
+          return cell.toString().trim();
         }
+      }).toList();
+    }).toList();
+  }
+
+  // ============================================================
+  // READ CSV
+  // ============================================================
+
+  List<List<String>> readCsv(String text) {
+    final rows = <List<String>>[];
+
+    final lines = const LineSplitter().convert(text);
+
+    for (final line in lines) {
+      if (line.trim().isEmpty) {
+        continue;
       }
 
-      rows.add(convertedRow);
+      rows.add(_parseCsvLine(line));
     }
 
     return rows;
+  }
+
+  // ============================================================
+  // CSV PARSER
+  // ============================================================
+
+  List<String> _parseCsvLine(String line) {
+    final result = <String>[];
+
+    final buffer = StringBuffer();
+
+    bool insideQuotes = false;
+
+    for (int i = 0; i < line.length; i++) {
+      final char = line[i];
+
+      if (char == '"') {
+        if (insideQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          buffer.write('"');
+          i++;
+          continue;
+        }
+
+        insideQuotes = !insideQuotes;
+        continue;
+      }
+
+      if (char == ',' && !insideQuotes) {
+        result.add(buffer.toString().trim());
+
+        buffer.clear();
+
+        continue;
+      }
+
+      buffer.write(char);
+    }
+
+    result.add(buffer.toString().trim());
+
+    return result;
   }
 
   // ============================================================
@@ -114,14 +180,12 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       return null;
     }
 
-    // إزالة العملات
     cleaned = cleaned
         .replaceAll("ر.ع.", "")
         .replaceAll("OMR", "")
         .replaceAll("omr", "")
         .replaceAll("RO", "")
         .replaceAll("ro", "")
-        .replaceAll("رع", "")
         .replaceAll(" ", "")
         .trim();
 
@@ -129,12 +193,10 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       return null;
     }
 
-    // تجاهل النسب
     if (cleaned.contains("%")) {
       return null;
     }
 
-    // إزالة comma من 1,250.50
     cleaned = cleaned.replaceAll(",", "");
 
     final number = double.tryParse(cleaned);
@@ -147,7 +209,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       return null;
     }
 
-    // حماية من الأرقام الغريبة
     if (number > 100000) {
       return null;
     }
@@ -160,173 +221,46 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   int _findHeaderRow(List<List<String>> rows) {
-    for (int i = 0; i < rows.length && i < 20; i++) {
+    for (int i = 0; i < rows.length && i < 15; i++) {
       final row = rows[i];
 
-      final normalizedValues = row
-          .map(_normalizeHeader)
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final joined = row.map(_normalizeHeader).join(" ");
 
-      final joined = normalizedValues.join(" ");
-
-      bool hasItem = false;
-      bool hasPrice = false;
-
-      for (final value in normalizedValues) {
-        if (_isItemHeader(value)) {
-          hasItem = true;
-        }
-
-        if (_isPriceHeader(value)) {
-          hasPrice = true;
-        }
-      }
-
-      if (hasItem && hasPrice) {
-        return i;
-      }
-
-      // بعض الملفات يكون فيها Header مثل:
-      // Item Name + Warehouse Price
-      if (joined.contains("item name") && joined.contains("price")) {
+      if (joined.contains("item name") ||
+          joined.contains("product name") ||
+          joined.contains("warehouse price") ||
+          joined.contains("purchase price") ||
+          joined.contains("wh price") ||
+          joined == "item price" ||
+          joined.contains("description")) {
         return i;
       }
     }
 
-    // لو لم نجد Header واضح، نستخدم أول صف.
     return 0;
   }
 
   // ============================================================
-  // ITEM HEADER
+  // FIND NAME COLUMN
   // ============================================================
 
-  bool _isItemHeader(String value) {
+  int _findNameColumn(List<String> header) {
     const exactNames = [
-      "item",
       "item name",
-      "product",
       "product name",
       "name",
+      "item",
       "description",
+      "product",
       "item description",
       "product description",
-      "item description name",
     ];
 
-    if (exactNames.contains(value)) {
-      return true;
-    }
-
-    if (value.contains("item name")) {
-      return true;
-    }
-
-    if (value.contains("product name")) {
-      return true;
-    }
-
-    if (value.contains("item description")) {
-      return true;
-    }
-
-    if (value.contains("product description")) {
-      return true;
-    }
-
-    return false;
-  }
-
-  // ============================================================
-  // PRICE HEADER
-  // ============================================================
-
-  bool _isPriceHeader(String value) {
-    const exactNames = [
-      "price",
-      "warehouse price",
-      "wh price",
-      "purchase price",
-      "unit price",
-      "cost price",
-      "sale price",
-      "selling price",
-    ];
-
-    if (exactNames.contains(value)) {
-      return true;
-    }
-
-    if (value.contains("warehouse price")) {
-      return true;
-    }
-
-    if (value.contains("purchase price")) {
-      return true;
-    }
-
-    if (value.contains("unit price")) {
-      return true;
-    }
-
-    if (value.contains("cost price")) {
-      return true;
-    }
-
-    if (value.contains("sale price")) {
-      return true;
-    }
-
-    if (value.contains("selling price")) {
-      return true;
-    }
-
-    return false;
-  }
-
-  // ============================================================
-  // FIND ITEM COLUMN
-  // ============================================================
-
-  int _findItemColumn(List<String> header) {
-    // أولًا: exact match
+    // Exact match
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
-      if (value == "item name") {
-        return i;
-      }
-    }
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value == "product name") {
-        return i;
-      }
-    }
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value == "item") {
-        return i;
-      }
-    }
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value == "product") {
-        return i;
-      }
-    }
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value == "description") {
+      if (exactNames.contains(value)) {
         return i;
       }
     }
@@ -337,64 +271,44 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       if (value.contains("item name") ||
           value.contains("product name") ||
-          value.contains("item description") ||
-          value.contains("product description")) {
+          value.contains("description")) {
         return i;
       }
     }
 
-    // fallback
     return 0;
   }
 
   // ============================================================
-  // FIND PRICE COLUMN
+  // FIND PRICE COLUMNS
   // ============================================================
 
-  int _findPriceColumn(List<String> header) {
-    // أعلى أولوية
-    const priority = [
-      "warehouse price",
-      "wh price",
-      "purchase price",
-      "cost price",
-      "unit price",
-      "price",
-      "sale price",
-      "selling price",
-    ];
+  List<int> _findPriceColumns(List<String> header) {
+    final priority = <int>[];
 
-    for (final wanted in priority) {
-      for (int i = 0; i < header.length; i++) {
-        final value = _normalizeHeader(header[i]);
+    final normal = <int>[];
 
-        if (value == wanted) {
-          return i;
-        }
-      }
-    }
-
-    // Partial match
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
+      // Highest priority
       if (value.contains("warehouse price") ||
-          value.contains("purchase price") ||
+          value.contains("wh price") ||
+          value.contains("purchase price")) {
+        priority.add(i);
+        continue;
+      }
+
+      if (value == "price" ||
+          value.contains("sale price") ||
           value.contains("unit price") ||
           value.contains("cost price") ||
-          value.contains("sale price") ||
-          value.contains("selling price")) {
-        return i;
+          value.contains("price")) {
+        normal.add(i);
       }
     }
 
-    // ==========================================================
-    // FALLBACK
-    // ==========================================================
-
-    // لا يوجد Header واضح للسعر.
-    // نبحث في الصفوف لاحقًا عن أول قيمة رقمية.
-    return -1;
+    return [...priority, ...normal];
   }
 
   // ============================================================
@@ -415,15 +329,20 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     final header = rows[headerIndex];
 
     debugPrint("=================================");
-    debugPrint("EXCEL HEADER ROW: $headerIndex");
+
+    debugPrint("HEADER ROW INDEX: $headerIndex");
+
     debugPrint("HEADER: $header");
+
     debugPrint("=================================");
 
-    final itemColumn = _findItemColumn(header);
-    final priceColumn = _findPriceColumn(header);
+    final nameColumn = _findNameColumn(header);
 
-    debugPrint("ITEM COLUMN: $itemColumn");
-    debugPrint("PRICE COLUMN: $priceColumn");
+    final priceColumns = _findPriceColumns(header);
+
+    debugPrint("NAME COLUMN: $nameColumn");
+
+    debugPrint("PRICE COLUMNS: $priceColumns");
 
     final items = <Map<String, dynamic>>[];
 
@@ -438,20 +357,20 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       }
 
       // ======================================================
-      // ITEM
+      // NAME
       // ======================================================
 
-      String itemName = "";
+      String name = "";
 
-      if (itemColumn >= 0 && itemColumn < row.length) {
-        itemName = row[itemColumn].trim();
+      if (nameColumn < row.length) {
+        name = row[nameColumn].trim();
       }
 
       // ======================================================
-      // FALLBACK ITEM
+      // FALLBACK NAME
       // ======================================================
 
-      if (itemName.isEmpty) {
+      if (name.isEmpty) {
         for (final cell in row) {
           final value = cell.trim();
 
@@ -459,26 +378,26 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             continue;
           }
 
-          // لو رقم، غالبًا سعر
           if (_parsePrice(value) != null) {
             continue;
           }
 
-          itemName = value;
+          name = value;
+
           break;
         }
       }
 
-      if (itemName.isEmpty) {
+      if (name.isEmpty) {
         skipped++;
         continue;
       }
 
       // ======================================================
-      // IGNORE HEADER-LIKE ROW
+      // IGNORE HEADER-LIKE ROWS
       // ======================================================
 
-      final normalizedName = _normalizeHeader(itemName);
+      final normalizedName = _normalizeHeader(name);
 
       if (normalizedName == "item" ||
           normalizedName == "item name" ||
@@ -497,22 +416,32 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       double? price;
 
       // ======================================================
-      // USE PRICE COLUMN
+      // PRICE COLUMNS
       // ======================================================
 
-      if (priceColumn >= 0 && priceColumn < row.length) {
-        price = _parsePrice(row[priceColumn]);
+      for (final column in priceColumns) {
+        if (column >= row.length) {
+          continue;
+        }
+
+        final parsed = _parsePrice(row[column]);
+
+        if (parsed == null) {
+          continue;
+        }
+
+        if (price == null) {
+          price = parsed;
+        }
       }
 
       // ======================================================
       // FALLBACK PRICE
       // ======================================================
 
-      // لو لم نجد عمود Price واضح،
-      // نبحث عن أول رقم صالح في الصف.
       if (price == null) {
         for (int column = 0; column < row.length; column++) {
-          if (column == itemColumn) {
+          if (column == nameColumn) {
             continue;
           }
 
@@ -522,8 +451,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             continue;
           }
 
-          price = parsed;
-          break;
+          if (price == null || parsed < price) {
+            price = parsed;
+          }
         }
       }
 
@@ -543,27 +473,158 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       // ADD ITEM
       // ======================================================
 
-      items.add({"name": itemName, "price": price, "active": true});
+      items.add({"name": name, "price": price, "active": true});
 
       if (items.length <= 10) {
         debugPrint(
           "ITEM ${items.length}: "
-          "name='$itemName' | price=$price",
+          "name='$name' | price=$price",
         );
       }
     }
 
     debugPrint("=================================");
-    debugPrint("TOTAL EXCEL ROWS: ${rows.length}");
+
+    debugPrint("TOTAL ROWS: ${rows.length}");
+
     debugPrint("VALID ITEMS: ${items.length}");
+
     debugPrint("SKIPPED ROWS: $skipped");
+
     debugPrint("=================================");
 
     return items;
   }
 
   // ============================================================
-  // SPLIT INTO BATCHES
+  // PDF -> CSV USING TABULA
+  // ============================================================
+
+  Future<List<List<String>>> convertPdfToRows(String pdfPath) async {
+    if (!Platform.isWindows) {
+      throw Exception(
+        "PDF conversion using Tabula is currently "
+        "configured for Windows.",
+      );
+    }
+
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+
+    final tabulaPath =
+        "$exeDir${Platform.pathSeparator}"
+        "tools${Platform.pathSeparator}"
+        "tabula.jar";
+
+    final javaPath =
+        "$exeDir${Platform.pathSeparator}"
+        "jre${Platform.pathSeparator}"
+        "bin${Platform.pathSeparator}"
+        "java.exe";
+
+    final tabulaFile = File(tabulaPath);
+
+    final javaFile = File(javaPath);
+
+    if (!await tabulaFile.exists()) {
+      throw Exception("Tabula not found:\n$tabulaPath");
+    }
+
+    if (!await javaFile.exists()) {
+      throw Exception("Java not found:\n$javaPath");
+    }
+
+    final tempDirectory = await Directory.systemTemp.createTemp(
+      "store_inventory_",
+    );
+
+    final csvPath =
+        "${tempDirectory.path}"
+        "${Platform.pathSeparator}"
+        "inventory.csv";
+
+    try {
+      if (mounted) {
+        setState(() {
+          currentStage = "Converting PDF...";
+
+          status = "Converting PDF...";
+
+          progress = 0;
+        });
+      }
+
+      debugPrint("=================================");
+
+      debugPrint("STORE INVENTORY PDF -> CSV");
+
+      debugPrint("STORE CODE: ${widget.storeCode}");
+
+      debugPrint("PDF: $pdfPath");
+
+      debugPrint("JAVA: $javaPath");
+
+      debugPrint("TABULA: $tabulaPath");
+
+      debugPrint("CSV: $csvPath");
+
+      debugPrint("=================================");
+
+      final result = await Process.run(javaPath, [
+        "-jar",
+        tabulaPath,
+        "-p",
+        "all",
+        "-f",
+        "CSV",
+        "-o",
+        csvPath,
+        pdfPath,
+      ], runInShell: true);
+
+      debugPrint("TABULA STDOUT:");
+
+      debugPrint(result.stdout.toString());
+
+      debugPrint("TABULA STDERR:");
+
+      debugPrint(result.stderr.toString());
+
+      debugPrint(
+        "TABULA EXIT CODE: "
+        "${result.exitCode}",
+      );
+
+      if (result.exitCode != 0) {
+        throw Exception(
+          "Tabula failed:\n"
+          "${result.stderr}",
+        );
+      }
+
+      final csvFile = File(csvPath);
+
+      if (!await csvFile.exists()) {
+        throw Exception("Tabula did not create CSV file.");
+      }
+
+      final csvText = await csvFile.readAsString(encoding: utf8);
+
+      if (csvText.trim().isEmpty) {
+        throw Exception("Tabula returned an empty CSV.");
+      }
+
+      return readCsv(csvText);
+    } finally {
+      try {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+      } catch (_) {}
+    }
+  }
+
+  // ============================================================
+  // SPLIT LIST
   // ============================================================
 
   List<List<T>> _splitIntoChunks<T>(List<T> items, int size) {
@@ -579,111 +640,396 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   }
 
   // ============================================================
+  // FIREBASE COMMIT WITH RETRY
+  // ============================================================
+
+  Future<void> _commitBatchWithRetry(
+    WriteBatch batch,
+    String operation,
+    int batchNumber,
+    int totalBatches,
+  ) async {
+    Object? lastError;
+
+    StackTrace? lastStackTrace;
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint("---------------------------------");
+
+        debugPrint(
+          "$operation "
+          "BATCH $batchNumber/$totalBatches "
+          "ATTEMPT $attempt/$maxRetries",
+        );
+
+        debugPrint(
+          "TIMEOUT: "
+          "${firebaseTimeout.inSeconds} seconds",
+        );
+
+        await batch.commit().timeout(firebaseTimeout);
+
+        debugPrint(
+          "$operation "
+          "BATCH $batchNumber/$totalBatches "
+          "SUCCESS",
+        );
+
+        return;
+      } catch (e, stackTrace) {
+        lastError = e;
+
+        lastStackTrace = stackTrace;
+
+        debugPrint("---------------------------------");
+
+        debugPrint(
+          "$operation "
+          "BATCH $batchNumber/$totalBatches "
+          "FAILED",
+        );
+
+        debugPrint("ATTEMPT: $attempt/$maxRetries");
+
+        debugPrint("ERROR: $e");
+
+        if (attempt < maxRetries) {
+          final waitSeconds = attempt * 5;
+
+          debugPrint(
+            "RETRYING IN "
+            "$waitSeconds SECONDS...",
+          );
+
+          if (mounted) {
+            setState(() {
+              currentStage = "$operation batch failed. Retrying...";
+
+              status =
+                  "$operation\n"
+                  "Batch $batchNumber / "
+                  "$totalBatches\n"
+                  "Retry $attempt / "
+                  "$maxRetries";
+            });
+          }
+
+          await Future.delayed(Duration(seconds: waitSeconds));
+        }
+      }
+    }
+
+    debugPrint("=================================");
+
+    debugPrint(
+      "$operation BATCH FAILED "
+      "AFTER $maxRetries ATTEMPTS",
+    );
+
+    debugPrint("ERROR: $lastError");
+
+    debugPrint("STACK TRACE:");
+
+    debugPrint(lastStackTrace.toString());
+
+    debugPrint("=================================");
+
+    throw Exception(
+      "Firebase $operation timeout/error "
+      "after $maxRetries attempts.\n"
+      "Batch: $batchNumber/$totalBatches\n"
+      "Last error: $lastError",
+    );
+  }
+
+  // ============================================================
+  // GET OLD DOCUMENTS WITH RETRY
+  // ============================================================
+
+  Future<List<QueryDocumentSnapshot>> _getOldInventoryWithRetry(
+    CollectionReference inventoryRef,
+  ) async {
+    Object? lastError;
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint(
+          "READ OLD INVENTORY "
+          "ATTEMPT $attempt/$maxRetries",
+        );
+
+        final snapshot = await inventoryRef.get().timeout(firebaseTimeout);
+
+        debugPrint(
+          "OLD INVENTORY READ SUCCESS: "
+          "${snapshot.docs.length}",
+        );
+
+        return snapshot.docs;
+      } catch (e) {
+        lastError = e;
+
+        debugPrint(
+          "READ OLD INVENTORY FAILED "
+          "ATTEMPT $attempt/$maxRetries",
+        );
+
+        debugPrint("ERROR: $e");
+
+        if (attempt < maxRetries) {
+          final waitSeconds = attempt * 5;
+
+          await Future.delayed(Duration(seconds: waitSeconds));
+        }
+      }
+    }
+
+    throw Exception(
+      "Firebase read timeout/error "
+      "after $maxRetries attempts.\n"
+      "Last error: $lastError",
+    );
+  }
+
+  // ============================================================
   // DELETE OLD INVENTORY
   // ============================================================
 
-  Future<int> deleteOldInventory(CollectionReference inventoryRef) async {
-    if (mounted) {
-      setState(() {
-        currentStage = "Removing old inventory...";
-        status = "Reading old inventory...";
-        progress = 0;
-        processedItems = 0;
-        totalItems = 0;
-        currentBatch = 0;
-        totalBatches = 0;
-      });
-    }
-
-    debugPrint("=================================");
-    debugPrint("READING OLD INVENTORY...");
-    debugPrint("=================================");
-
-    final snapshot = await inventoryRef.get();
-
-    final oldDocs = snapshot.docs;
-
-    final total = oldDocs.length;
-
-    debugPrint("OLD INVENTORY COUNT: $total");
-
-    if (total == 0) {
+  Future<int> deleteOldInventory(
+    FirebaseFirestore db,
+    CollectionReference inventoryRef,
+  ) async {
+    try {
       if (mounted) {
         setState(() {
-          currentStage = "Old inventory is empty";
-          status = "Old inventory is empty";
-          progress = 1;
+          currentStage = "Reading old inventory...";
+
+          status = "Reading old inventory...";
+
+          progress = 0;
+
+          processedItems = 0;
+
+          totalItems = 0;
+
+          currentBatch = 0;
+
+          totalBatches = 0;
         });
       }
 
-      return 0;
-    }
+      debugPrint("=================================");
 
-    final chunks = _splitIntoChunks(oldDocs, batchSize);
+      debugPrint("READING OLD INVENTORY...");
 
-    totalBatches = chunks.length;
+      debugPrint("=================================");
 
-    int deleted = 0;
+      // ======================================================
+      // READ OLD DOCUMENTS
+      // ======================================================
 
-    for (int i = 0; i < chunks.length; i++) {
-      final chunk = chunks[i];
+      final oldDocs = await _getOldInventoryWithRetry(inventoryRef);
 
-      final batchNumber = i + 1;
+      final total = oldDocs.length;
+
+      debugPrint("=================================");
+
+      debugPrint("OLD INVENTORY COUNT: $total");
+
+      debugPrint("=================================");
+
+      if (total == 0) {
+        if (mounted) {
+          setState(() {
+            currentStage = "Old inventory is empty";
+
+            status = "Old inventory is empty";
+
+            progress = 1;
+          });
+        }
+
+        return 0;
+      }
+
+      // ======================================================
+      // SPLIT
+      // ======================================================
+
+      final chunks = _splitIntoChunks(oldDocs, batchSize);
+
+      totalBatches = chunks.length;
+
+      debugPrint(
+        "DELETE BATCHES: "
+        "${chunks.length}",
+      );
+
+      debugPrint("BATCH SIZE: $batchSize");
+
+      debugPrint(
+        "PARALLEL BATCHES: "
+        "$parallelBatches",
+      );
+
+      // ======================================================
+      // DELETE
+      // ======================================================
+
+      int deleted = 0;
+
+      for (int start = 0; start < chunks.length; start += parallelBatches) {
+        final end = (start + parallelBatches < chunks.length)
+            ? start + parallelBatches
+            : chunks.length;
+
+        final currentChunks = chunks.sublist(start, end);
+
+        debugPrint("=================================");
+
+        debugPrint(
+          "START DELETE GROUP "
+          "${start + 1}-$end / "
+          "${chunks.length}",
+        );
+
+        debugPrint("=================================");
+
+        final futures = <Future<int>>[];
+
+        for (int i = 0; i < currentChunks.length; i++) {
+          final chunk = currentChunks[i];
+
+          final batchNumber = start + i + 1;
+
+          futures.add(
+            _deleteInventoryBatch(db, chunk, batchNumber, chunks.length),
+          );
+        }
+
+        final results = await Future.wait(futures);
+
+        for (final count in results) {
+          deleted += count;
+        }
+
+        // ====================================================
+        // UPDATE PROGRESS
+        // ====================================================
+
+        if (mounted) {
+          setState(() {
+            processedItems = deleted;
+
+            totalItems = total;
+
+            currentBatch = (deleted / batchSize).ceil();
+
+            totalBatches = chunks.length;
+
+            progress = (deleted / total).clamp(0.0, 1.0);
+
+            currentStage = "Removing old inventory...";
+
+            status =
+                "Removing old inventory...\n"
+                "$deleted / $total";
+          });
+        }
+
+        debugPrint(
+          "DELETE PROGRESS: "
+          "$deleted / $total",
+        );
+      }
+
+      // ======================================================
+      // FINISHED
+      // ======================================================
+
+      debugPrint("=================================");
+
+      debugPrint(
+        "OLD INVENTORY DELETE FINISHED: "
+        "$deleted",
+      );
+
+      debugPrint("=================================");
 
       if (mounted) {
         setState(() {
-          currentStage = "Removing old inventory...";
+          currentStage = "Old inventory removed";
+
           status =
-              "Removing old inventory...\n"
-              "$deleted / $total";
-          currentBatch = batchNumber;
-          totalBatches = chunks.length;
-          progress = total == 0 ? 0 : deleted / total;
-        });
-      }
+              "Old inventory removed\n"
+              "$deleted documents deleted";
 
-      debugPrint(
-        "START DELETE BATCH "
-        "$batchNumber/${chunks.length} "
-        "(${chunk.length} docs)",
-      );
+          progress = 1.0;
 
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (final doc in chunk) {
-        batch.delete(doc.reference);
-      }
-
-      await batch.commit();
-
-      deleted += chunk.length;
-
-      debugPrint(
-        "DELETE BATCH "
-        "$batchNumber/${chunks.length} COMPLETED "
-        "(${chunk.length} docs)",
-      );
-
-      if (mounted) {
-        setState(() {
           processedItems = deleted;
+
           totalItems = total;
-          currentBatch = batchNumber;
-          totalBatches = chunks.length;
-          progress = (deleted / total).clamp(0.0, 1.0);
-
-          currentStage = "Removing old inventory...";
-
-          status =
-              "Removing old inventory...\n"
-              "$deleted / $total";
         });
       }
+
+      return deleted;
+    } catch (e, stackTrace) {
+      debugPrint("=================================");
+
+      debugPrint("DELETE OLD INVENTORY FAILED");
+
+      debugPrint("ERROR: $e");
+
+      debugPrint("STACK TRACE:");
+
+      debugPrint(stackTrace.toString());
+
+      debugPrint("=================================");
+
+      rethrow;
+    }
+  }
+
+  // ============================================================
+  // DELETE ONE BATCH
+  // ============================================================
+
+  Future<int> _deleteInventoryBatch(
+    FirebaseFirestore db,
+    List<QueryDocumentSnapshot> docs,
+    int batchNumber,
+    int totalBatches,
+  ) async {
+    debugPrint(
+      "START DELETE BATCH "
+      "$batchNumber/$totalBatches "
+      "(${docs.length} docs)",
+    );
+
+    // IMPORTANT:
+    // Create the batch ONCE.
+    //
+    // If commit times out and we retry,
+    // we use the same document references.
+    // Delete is therefore safe/idempotent.
+
+    final batch = db.batch();
+
+    for (final doc in docs) {
+      batch.delete(doc.reference);
     }
 
-    debugPrint("OLD INVENTORY DELETE FINISHED: $deleted");
+    await _commitBatchWithRetry(batch, "DELETE", batchNumber, totalBatches);
 
-    return deleted;
+    debugPrint(
+      "DELETE BATCH "
+      "$batchNumber/$totalBatches "
+      "COMPLETED "
+      "(${docs.length} docs)",
+    );
+
+    return docs.length;
   }
 
   // ============================================================
@@ -691,75 +1037,81 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<int> uploadNewInventory(
+    FirebaseFirestore db,
     CollectionReference inventoryRef,
     List<Map<String, dynamic>> items,
   ) async {
-    if (items.isEmpty) {
+    final total = items.length;
+
+    if (total == 0) {
       return 0;
     }
 
     final chunks = _splitIntoChunks(items, batchSize);
 
-    final total = items.length;
+    totalBatches = chunks.length;
 
     int uploaded = 0;
 
-    totalBatches = chunks.length;
+    // ========================================================
+    // UPLOAD
+    // ========================================================
 
-    for (int i = 0; i < chunks.length; i++) {
-      final chunk = chunks[i];
+    for (int start = 0; start < chunks.length; start += parallelBatches) {
+      final end = (start + parallelBatches < chunks.length)
+          ? start + parallelBatches
+          : chunks.length;
 
-      final batchNumber = i + 1;
+      final currentChunks = chunks.sublist(start, end);
+
+      debugPrint("=================================");
+
+      debugPrint(
+        "START UPLOAD GROUP "
+        "${start + 1}-$end / "
+        "${chunks.length}",
+      );
+
+      debugPrint("=================================");
+
+      final futures = <Future<int>>[];
+
+      for (int i = 0; i < currentChunks.length; i++) {
+        final chunk = currentChunks[i];
+
+        final batchNumber = start + i + 1;
+
+        futures.add(
+          _uploadInventoryBatch(
+            db,
+            inventoryRef,
+            chunk,
+            batchNumber,
+            chunks.length,
+          ),
+        );
+      }
+
+      final results = await Future.wait(futures);
+
+      for (final count in results) {
+        uploaded += count;
+      }
+
+      // ======================================================
+      // PROGRESS
+      // ======================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Uploading inventory...";
-          status =
-              "Uploading inventory...\n"
-              "$uploaded / $total";
           processedItems = uploaded;
+
           totalItems = total;
-          currentBatch = batchNumber;
+
+          currentBatch = (uploaded / batchSize).ceil();
+
           totalBatches = chunks.length;
-          progress = total == 0 ? 0 : uploaded / total;
-        });
-      }
 
-      debugPrint(
-        "START UPLOAD BATCH "
-        "$batchNumber/${chunks.length} "
-        "(${chunk.length} docs)",
-      );
-
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (final item in chunk) {
-        final docRef = inventoryRef.doc();
-
-        batch.set(docRef, {
-          "name": item["name"].toString(),
-          "price": item["price"],
-          "active": true,
-          "updatedAt": FieldValue.serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-
-      uploaded += chunk.length;
-
-      debugPrint(
-        "UPLOAD BATCH "
-        "$batchNumber/${chunks.length} COMPLETED "
-        "(${chunk.length} docs)",
-      );
-
-      if (mounted) {
-        setState(() {
-          processedItems = uploaded;
-          totalItems = total;
-          currentBatch = batchNumber;
-          totalBatches = chunks.length;
           progress = (uploaded / total).clamp(0.0, 1.0);
 
           currentStage = "Uploading inventory...";
@@ -769,9 +1121,109 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
               "$uploaded / $total";
         });
       }
+
+      debugPrint(
+        "UPLOAD PROGRESS: "
+        "$uploaded / $total",
+      );
     }
 
+    debugPrint("=================================");
+
+    debugPrint("UPLOAD FINISHED: $uploaded");
+
+    debugPrint("=================================");
+
     return uploaded;
+  }
+
+  // ============================================================
+  // UPLOAD ONE BATCH
+  // ============================================================
+
+  Future<int> _uploadInventoryBatch(
+    FirebaseFirestore db,
+    CollectionReference inventoryRef,
+    List<Map<String, dynamic>> items,
+    int batchNumber,
+    int totalBatches,
+  ) async {
+    debugPrint(
+      "START UPLOAD BATCH "
+      "$batchNumber/$totalBatches "
+      "(${items.length} docs)",
+    );
+
+    // IMPORTANT:
+    // Document IDs are generated ONCE.
+    //
+    // If commit times out and retry happens,
+    // the exact same document references
+    // are used again.
+    //
+    // This prevents duplicate documents.
+
+    final batch = db.batch();
+
+    for (final item in items) {
+      final docRef = inventoryRef.doc();
+
+      batch.set(docRef, {
+        "name": item["name"].toString(),
+
+        "price": item["price"],
+
+        "active": true,
+
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+    }
+
+    await _commitBatchWithRetry(batch, "UPLOAD", batchNumber, totalBatches);
+
+    debugPrint(
+      "UPLOAD BATCH "
+      "$batchNumber/$totalBatches "
+      "COMPLETED "
+      "(${items.length} docs)",
+    );
+
+    return items.length;
+  }
+
+  // ============================================================
+  // VERIFY FIREBASE WITH RETRY
+  // ============================================================
+
+  Future<int> _verifyInventory(CollectionReference inventoryRef) async {
+    Object? lastError;
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint(
+          "VERIFY INVENTORY "
+          "ATTEMPT $attempt/$maxRetries",
+        );
+
+        final snapshot = await inventoryRef.get().timeout(firebaseTimeout);
+
+        return snapshot.docs.length;
+      } catch (e) {
+        lastError = e;
+
+        debugPrint("VERIFY FAILED: $e");
+
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: attempt * 5));
+        }
+      }
+    }
+
+    throw Exception(
+      "Firebase verification failed "
+      "after $maxRetries attempts.\n"
+      "Last error: $lastError",
+    );
   }
 
   // ============================================================
@@ -784,13 +1236,13 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     }
 
     try {
-      // ========================================================
-      // PICK EXCEL
-      // ========================================================
+      // ======================================================
+      // PICK FILE
+      // ======================================================
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ["xlsx", "xls"],
+        allowedExtensions: ["xlsx", "xls", "pdf", "csv"],
         withData: true,
       );
 
@@ -800,6 +1252,14 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       final file = result.files.first;
 
+      final filePath = file.path;
+
+      if (filePath == null || filePath.trim().isEmpty) {
+        throw Exception("Could not get file path.");
+      }
+
+      final extension = file.extension?.toLowerCase() ?? "";
+
       if (!mounted) {
         return;
       }
@@ -807,111 +1267,176 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       setState(() {
         uploading = true;
 
-        currentStage = "Reading Excel...";
-        status = "Reading Excel...";
+        currentStage = "Reading file...";
+
+        status = "Reading file...";
 
         progress = 0;
 
         processedItems = 0;
+
         totalItems = 0;
 
         currentBatch = 0;
+
         totalBatches = 0;
       });
 
       debugPrint("=================================");
+
       debugPrint("OPENING STORE INVENTORY");
-      debugPrint("STORE CODE = ${widget.storeCode}");
-      debugPrint("FILE NAME = ${file.name}");
+
       debugPrint(
-        "FIREBASE PATH = "
+        "STORE CODE = "
+        "${widget.storeCode}",
+      );
+
+      debugPrint(
+        "FILE NAME = "
+        "${file.name}",
+      );
+
+      debugPrint(
+        "FILE EXTENSION = "
+        "$extension",
+      );
+
+      debugPrint(
+        "INVENTORY PATH = "
         "stores/${widget.storeCode}/inventory",
       );
+
       debugPrint("=================================");
 
-      // ========================================================
-      // READ BYTES
-      // ========================================================
+      // ======================================================
+      // READ FILE
+      // ======================================================
 
-      Uint8List? bytes = file.bytes;
+      List<List<String>> rows;
 
-      if (bytes == null || bytes.isEmpty) {
-        if (file.path == null) {
+      if (extension == "pdf") {
+        rows = await convertPdfToRows(filePath);
+      } else if (extension == "csv") {
+        if (mounted) {
+          setState(() {
+            currentStage = "Reading CSV...";
+
+            status = "Reading CSV...";
+
+            progress = 0;
+          });
+        }
+
+        final csvText = await File(filePath).readAsString(encoding: utf8);
+
+        rows = readCsv(csvText);
+      } else {
+        if (mounted) {
+          setState(() {
+            currentStage = "Reading Excel...";
+
+            status = "Reading Excel...";
+
+            progress = 0;
+          });
+        }
+
+        Uint8List? bytes = file.bytes;
+
+        if (bytes == null || bytes.isEmpty) {
+          bytes = await File(filePath).readAsBytes();
+        }
+
+        if (bytes.isEmpty) {
           throw Exception("Could not read Excel file.");
         }
 
-        // Windows / Desktop
-        bytes = await XFile(file.path!).readAsBytes();
+        rows = await readExcel(bytes);
       }
 
-      if (bytes!.isEmpty) {
-        throw Exception("Could not read Excel file.");
-      }
-
-      // ========================================================
-      // READ EXCEL
-      // ========================================================
-
-      final rows = await readExcel(bytes);
+      // ======================================================
+      // CHECK ROWS
+      // ======================================================
 
       debugPrint("=================================");
-      debugPrint("ROWS EXTRACTED: ${rows.length}");
+
+      debugPrint(
+        "ROWS EXTRACTED: "
+        "${rows.length}",
+      );
 
       if (rows.isNotEmpty) {
-        debugPrint("FIRST ROW: ${rows.first}");
+        debugPrint(
+          "FIRST ROW: "
+          "${rows.first}",
+        );
       }
 
       if (rows.length > 1) {
-        debugPrint("SECOND ROW: ${rows[1]}");
+        debugPrint(
+          "SECOND ROW: "
+          "${rows[1]}",
+        );
       }
 
       debugPrint("=================================");
 
       if (rows.isEmpty) {
-        throw Exception("No rows were extracted from Excel.");
+        throw Exception("No rows were extracted from the file.");
       }
 
-      // ========================================================
-      // EXTRACT ITEM + PRICE
-      // ========================================================
+      // ======================================================
+      // EXTRACT ITEMS
+      // ======================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Detecting items and prices...";
-          status = "Detecting items and prices...";
+          currentStage = "Detecting item names and prices...";
+
+          status = "Detecting item names and prices...";
+
           progress = 0;
         });
       }
 
       final items = extractItems(rows);
 
-      // ========================================================
-      // SAFETY
-      // ========================================================
+      // ======================================================
+      // SAFETY CHECK
+      // ======================================================
 
       if (items.isEmpty) {
         throw Exception(
           "No valid items found.\n\n"
-          "Excel must contain Item and Price.",
+          "The file must contain an item name "
+          "and a price.",
         );
       }
 
       if (rows.length > 100 && items.length < 10) {
         throw Exception(
-          "Excel extraction failed.\n\n"
-          "Rows: ${rows.length}\n"
-          "Valid items: ${items.length}\n\n"
-          "Old Firebase inventory was NOT deleted.",
+          "Extraction failed.\n\n"
+          "Rows extracted: "
+          "${rows.length}\n"
+          "Valid items: "
+          "${items.length}\n\n"
+          "Old Firebase inventory "
+          "was NOT deleted.",
         );
       }
 
       debugPrint("=================================");
-      debugPrint("ITEMS READY: ${items.length}");
+
+      debugPrint(
+        "ITEMS READY FOR FIREBASE: "
+        "${items.length}",
+      );
+
       debugPrint("=================================");
 
-      // ========================================================
+      // ======================================================
       // FIREBASE
-      // ========================================================
+      // ======================================================
 
       final db = FirebaseFirestore.instance;
 
@@ -919,39 +1444,51 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       final inventoryRef = storeRef.collection("inventory");
 
-      // ========================================================
+      // ======================================================
       // DELETE OLD
-      // ========================================================
+      // ======================================================
 
       if (mounted) {
         setState(() {
           currentStage = "Removing old inventory...";
+
           status = "Removing old inventory...";
+
           progress = 0;
+
           processedItems = 0;
+
           totalItems = 0;
+
           currentBatch = 0;
+
           totalBatches = 0;
         });
       }
 
-      final deleted = await deleteOldInventory(inventoryRef);
+      final deleted = await deleteOldInventory(db, inventoryRef);
 
-      debugPrint("OLD DOCUMENTS DELETED: $deleted");
+      debugPrint(
+        "OLD DOCUMENTS DELETED: "
+        "$deleted",
+      );
 
-      // ========================================================
+      // ======================================================
       // UPLOAD NEW
-      // ========================================================
+      // ======================================================
 
       if (mounted) {
         setState(() {
           currentStage = "Uploading inventory...";
+
           status =
               "Uploading inventory...\n"
               "0 / ${items.length}";
+
           progress = 0;
 
           processedItems = 0;
+
           totalItems = items.length;
 
           currentBatch = 0;
@@ -960,59 +1497,76 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         });
       }
 
-      final uploaded = await uploadNewInventory(inventoryRef, items);
+      final uploaded = await uploadNewInventory(db, inventoryRef, items);
 
-      // ========================================================
-      // CHECK COUNT
-      // ========================================================
+      // ======================================================
+      // CHECK UPLOAD COUNT
+      // ======================================================
 
       if (uploaded != items.length) {
         throw Exception(
           "Upload count mismatch.\n"
-          "Expected: ${items.length}\n"
-          "Uploaded: $uploaded",
+          "Expected: "
+          "${items.length}\n"
+          "Uploaded: "
+          "$uploaded",
         );
       }
 
-      // ========================================================
+      // ======================================================
       // UPDATE STORE
-      // ========================================================
+      // ======================================================
 
       if (mounted) {
         setState(() {
           currentStage = "Updating store information...";
+
           status = "Updating store information...";
+
           progress = 0.98;
         });
       }
 
       await storeRef.set({
         "inventoryCount": items.length,
+
         "inventoryUpdatedAt": FieldValue.serverTimestamp(),
+
         "inventoryAvailable": true,
+
         "inventoryFileName": file.name,
       }, SetOptions(merge: true));
 
-      // ========================================================
-      // VERIFY
-      // ========================================================
+      // ======================================================
+      // FINAL VERIFICATION
+      // ======================================================
 
       if (mounted) {
         setState(() {
           currentStage = "Verifying inventory...";
+
           status = "Verifying Firebase inventory...";
+
           progress = 0.99;
         });
       }
 
-      final verifySnapshot = await inventoryRef.get();
-
-      final firebaseCount = verifySnapshot.docs.length;
+      final firebaseCount = await _verifyInventory(inventoryRef);
 
       debugPrint("=================================");
+
       debugPrint("FIREBASE VERIFICATION");
-      debugPrint("EXPECTED: ${items.length}");
-      debugPrint("FIREBASE: $firebaseCount");
+
+      debugPrint(
+        "EXPECTED: "
+        "${items.length}",
+      );
+
+      debugPrint(
+        "FIREBASE: "
+        "$firebaseCount",
+      );
+
       debugPrint("=================================");
 
       if (firebaseCount != items.length) {
@@ -1023,9 +1577,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         );
       }
 
-      // ========================================================
+      // ======================================================
       // SUCCESS
-      // ========================================================
+      // ======================================================
 
       if (!mounted) {
         return;
@@ -1037,6 +1591,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         currentStage = "Inventory uploaded successfully ✔";
 
         processedItems = items.length;
+
         totalItems = items.length;
 
         currentBatch = totalBatches;
@@ -1046,22 +1601,44 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         status =
             "Inventory uploaded successfully ✔\n\n"
             "${items.length} items saved.\n\n"
-            "Firebase documents: $firebaseCount";
+            "Firebase documents: "
+            "$firebaseCount";
       });
 
       debugPrint("=================================");
+
       debugPrint("STORE INVENTORY UPLOAD SUCCESS");
-      debugPrint("UPLOADED ITEMS: ${items.length}");
-      debugPrint("FIREBASE DOCUMENTS: $firebaseCount");
-      debugPrint("PATH: stores/${widget.storeCode}/inventory");
-      debugPrint("FIELDS: name + price + active + updatedAt");
+
+      debugPrint(
+        "UPLOADED ITEMS: "
+        "${items.length}",
+      );
+
+      debugPrint(
+        "FIREBASE DOCUMENTS: "
+        "$firebaseCount",
+      );
+
+      debugPrint(
+        "FIREBASE PATH: "
+        "stores/${widget.storeCode}/inventory",
+      );
+
+      debugPrint(
+        "FIELDS: "
+        "name + price + active + updatedAt",
+      );
+
+      debugPrint("QTY FIELD: NOT STORED");
+
       debugPrint("=================================");
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             "تم تحديث المخزون بنجاح ✔\n"
-            "عدد الأصناف: ${items.length}",
+            "عدد الأصناف: "
+            "${items.length}",
           ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 5),
@@ -1069,10 +1646,15 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       );
     } catch (e, stackTrace) {
       debugPrint("=================================");
+
       debugPrint("STORE INVENTORY UPLOAD FAILED");
+
       debugPrint("ERROR: $e");
+
       debugPrint("STACK TRACE:");
+
       debugPrint(stackTrace.toString());
+
       debugPrint("=================================");
 
       if (!mounted) {
@@ -1091,7 +1673,10 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("حدث خطأ أثناء رفع المخزون:\n$e"),
+          content: Text(
+            "حدث خطأ أثناء رفع المخزون:\n"
+            "$e",
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 8),
         ),
@@ -1126,6 +1711,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       appBar: AppBar(
         backgroundColor: Colors.grey.shade100,
+
         elevation: 0,
 
         title: const Text(
@@ -1175,7 +1761,8 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
                 const SizedBox(height: 8),
 
                 Text(
-                  "Store: ${widget.storeCode}",
+                  "Store: "
+                  "${widget.storeCode}",
                   style: const TextStyle(
                     fontSize: 16,
                     color: Colors.grey,
@@ -1259,9 +1846,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
               children: [
                 Icon(
                   uploading ? Icons.cloud_upload : Icons.check_circle,
-
                   size: 32,
-
                   color: uploading ? const Color(0xff0050c0) : Colors.green,
                 ),
 
@@ -1270,7 +1855,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
                 Expanded(
                   child: Text(
                     currentStage.isEmpty ? status : currentStage,
-
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.bold,
@@ -1312,11 +1896,10 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             if (totalItems > 0)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                 children: [
                   Text(
-                    "$processedItems / $totalItems",
-
+                    "$processedItems / "
+                    "$totalItems",
                     style: const TextStyle(
                       color: Colors.grey,
                       fontWeight: FontWeight.bold,
@@ -1328,7 +1911,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
                       "Batch "
                       "$currentBatch / "
                       "$totalBatches",
-
                       style: const TextStyle(color: Colors.grey),
                     ),
                 ],
@@ -1339,9 +1921,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
               Text(
                 status,
-
                 textAlign: TextAlign.center,
-
                 style: const TextStyle(
                   color: Color(0xff0050c0),
                   fontWeight: FontWeight.bold,
@@ -1382,23 +1962,23 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   Text(
                     "Upload Inventory",
-
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
 
                   SizedBox(height: 7),
 
-                  Text("Excel only", style: TextStyle(color: Colors.grey)),
+                  Text(
+                    "Excel / PDF / CSV",
+                    style: TextStyle(color: Colors.grey),
+                  ),
 
                   SizedBox(height: 5),
 
                   Text(
                     "Item Name + Price",
-
                     style: TextStyle(
                       color: Color(0xff0050c0),
                       fontWeight: FontWeight.bold,
@@ -1458,11 +2038,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   Text(
                     "Firebase Inventory",
-
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
 
@@ -1470,7 +2048,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
                   Text(
                     "Only item name and price are stored.",
-
                     style: TextStyle(color: Colors.grey),
                   ),
 
@@ -1478,7 +2055,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
                   Text(
                     "Quantity is not required.",
-
                     style: TextStyle(
                       color: Colors.green,
                       fontWeight: FontWeight.bold,
