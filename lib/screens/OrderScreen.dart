@@ -17,23 +17,26 @@ class OrderScreen extends StatefulWidget {
   static const routeName = "orderScreen";
 
   final String storeCode;
-
   final Timestamp? expireDate;
 
   const OrderScreen({super.key, required this.storeCode, this.expireDate});
 
   @override
-  State<OrderScreen> createState() => _OrderScreenState();
+  State createState() => _OrderScreenState();
 }
 
 class _OrderScreenState extends State<OrderScreen> {
-  late final storeCode = widget.storeCode;
+  late final String storeCode = widget.storeCode;
 
-  // Missing Items Excel
+  // ==========================
+  // Pharmacy Missing Items
+  // ==========================
 
   List<List<String>> inventoryRows = [];
 
+  // ==========================
   // Warehouse Firebase Inventory
+  // ==========================
 
   List<List<String>> orderRows = [];
 
@@ -45,13 +48,19 @@ class _OrderScreenState extends State<OrderScreen> {
 
   String statusText = "";
 
+  // ==========================
   // Warehouses
+  // ==========================
 
   List<Map<String, dynamic>> warehouses = [];
 
   String? selectedWarehouseId;
 
   bool loadingWarehouses = false;
+
+  // ==========================
+  // INIT
+  // ==========================
 
   @override
   void initState() {
@@ -64,7 +73,7 @@ class _OrderScreenState extends State<OrderScreen> {
   // Logout
   // ==========================
 
-  Future<void> logout() async {
+  Future logout() async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.remove("username");
@@ -73,9 +82,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
     Navigator.pushAndRemoveUntil(
       context,
-
       MaterialPageRoute(builder: (_) => Homescreen()),
-
       (route) => false,
     );
   }
@@ -84,59 +91,182 @@ class _OrderScreenState extends State<OrderScreen> {
   // Load Warehouses
   // ==========================
 
-  Future<void> loadWarehouses() async {
+  Future loadWarehouses() async {
+    if (!mounted) return;
+
     setState(() {
       loadingWarehouses = true;
+      statusText = "Loading warehouses...";
     });
 
-    final snap = await FirebaseFirestore.instance
-        .collection("stores")
-        .where("role", isEqualTo: "store")
-        .get();
+    try {
+      debugPrint("=================================");
+      debugPrint("LOADING WAREHOUSES");
+      debugPrint("=================================");
 
-    warehouses = snap.docs.map((doc) {
-      final data = doc.data();
+      final snap = await FirebaseFirestore.instance
+          .collection("stores")
+          .where("role", isEqualTo: "store")
+          .get();
 
-      return {"id": doc.id, "name": data["name"] ?? doc.id};
-    }).toList();
+      debugPrint("Warehouse documents found: ${snap.docs.length}");
 
-    setState(() {
-      loadingWarehouses = false;
-    });
+      final loadedWarehouses = <Map<String, dynamic>>[];
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+
+        debugPrint("---------------------------------");
+        debugPrint("Warehouse ID: ${doc.id}");
+        debugPrint("Warehouse data: $data");
+
+        final name = data["name"]?.toString().trim() ?? "";
+
+        loadedWarehouses.add({
+          "id": doc.id,
+          "name": name.isNotEmpty ? name : doc.id,
+        });
+      }
+
+      debugPrint("---------------------------------");
+      debugPrint("Warehouses loaded: ${loadedWarehouses.length}");
+      debugPrint("=================================");
+
+      if (!mounted) return;
+
+      setState(() {
+        warehouses = loadedWarehouses;
+        loadingWarehouses = false;
+
+        statusText = loadedWarehouses.isEmpty ? "No warehouses found." : "";
+      });
+    } catch (e, stackTrace) {
+      debugPrint("=================================");
+      debugPrint("FAILED TO LOAD WAREHOUSES");
+      debugPrint("Error: $e");
+      debugPrint("StackTrace: $stackTrace");
+      debugPrint("=================================");
+
+      if (!mounted) return;
+
+      setState(() {
+        loadingWarehouses = false;
+        statusText = "Failed to load warehouses:\n$e";
+      });
+    }
   }
 
   // ==========================
   // Load Warehouse Inventory
   // ==========================
 
-  Future<void> loadWarehouseItems(String warehouseId) async {
+  Future loadWarehouseItems(String warehouseId) async {
+    if (!mounted) return;
+
     setState(() {
+      orderRows.clear();
       statusText = "Loading warehouse inventory...";
     });
 
-    final snap = await FirebaseFirestore.instance
-        .collection("stores")
-        .doc(warehouseId)
-        .collection("inventory")
-        .get();
+    try {
+      debugPrint("=================================");
+      debugPrint("LOADING WAREHOUSE INVENTORY");
+      debugPrint("Warehouse ID: $warehouseId");
+      debugPrint("=================================");
 
-    orderRows = snap.docs.map((doc) {
-      final data = doc.data();
+      final inventoryRef = FirebaseFirestore.instance
+          .collection("stores")
+          .doc(warehouseId)
+          .collection("inventory");
 
-      return [
-        data["name"]?.toString() ?? "",
+      final snap = await inventoryRef.get();
 
-        data["qty"]?.toString() ?? "0",
+      debugPrint("Inventory documents found: ${snap.docs.length}");
 
-        data["purchasePrice"]?.toString() ?? "",
+      final loadedRows = <List<String>>[];
 
-        data["salePrice"]?.toString() ?? "",
-      ];
-    }).toList();
+      for (final doc in snap.docs) {
+        final data = doc.data();
 
-    setState(() {
-      statusText = "${orderRows.length} items loaded ✔";
-    });
+        debugPrint("---------------------------------");
+        debugPrint("Inventory ID: ${doc.id}");
+        debugPrint("Inventory data: $data");
+
+        // ==========================
+        // Item Name
+        // ==========================
+
+        final name = data["name"]?.toString().trim() ?? "";
+
+        if (name.isEmpty) {
+          debugPrint("Skipped ${doc.id}: name is empty");
+          continue;
+        }
+
+        // ==========================
+        // PRICE
+        // ==========================
+
+        double price = 0;
+
+        final rawPrice = data["price"];
+
+        if (rawPrice is num) {
+          price = rawPrice.toDouble();
+        } else {
+          price =
+              double.tryParse(
+                rawPrice?.toString().replaceAll(",", "").trim() ?? "",
+              ) ??
+              0;
+        }
+
+        debugPrint("ITEM: $name | PRICE: $price");
+
+        // ==========================
+        // Warehouse Row
+        // ==========================
+        //
+        // [0] Item
+        // [1] Qty - not used
+        // [2] Purchase Price
+        // [3] Sale Price
+        //
+
+        loadedRows.add([name, "0", price.toString(), price.toString()]);
+      }
+
+      debugPrint("---------------------------------");
+      debugPrint("Warehouse items loaded: ${loadedRows.length}");
+
+      if (loadedRows.isNotEmpty) {
+        debugPrint("First warehouse item: ${loadedRows.first}");
+      }
+
+      debugPrint("=================================");
+
+      if (!mounted) return;
+
+      setState(() {
+        orderRows = loadedRows;
+
+        statusText = "${orderRows.length} warehouse items loaded ✔";
+      });
+    } catch (e, stackTrace) {
+      debugPrint("=================================");
+      debugPrint("FAILED TO LOAD WAREHOUSE INVENTORY");
+      debugPrint("Error: $e");
+      debugPrint("StackTrace: $stackTrace");
+      debugPrint("=================================");
+
+      if (!mounted) return;
+
+      setState(() {
+        orderRows.clear();
+
+        statusText = "Failed to load warehouse inventory:\n$e";
+      });
+    }
   }
 
   // ==========================
@@ -146,22 +276,24 @@ class _OrderScreenState extends State<OrderScreen> {
   List<List<String>> excelToRows(Uint8List bytes) {
     final excel = Excel.decodeBytes(bytes);
 
-    if (excel.tables.isEmpty) return [];
+    if (excel.tables.isEmpty) {
+      return [];
+    }
 
     final table = excel.tables.values.first;
 
     return table.rows.map((row) {
       return row.map((cell) {
-        return cell?.value.toString() ?? "";
+        return cell?.value.toString().trim() ?? "";
       }).toList();
     }).toList();
   }
 
   // ==========================
-  // Upload Missing Items
+  // Pick Missing Items
   // ==========================
 
-  Future<void> pickInventory() async {
+  Future pickInventory() async {
     try {
       final type = XTypeGroup(label: "Excel", extensions: ["xlsx"]);
 
@@ -171,250 +303,526 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final bytes = await File(file.path).readAsBytes();
 
-      inventoryRows = excelToRows(bytes);
+      final rows = excelToRows(bytes);
 
-      inventoryFileName = file.name;
+      if (rows.length <= 1) {
+        throw Exception("Excel file is empty.");
+      }
+
+      debugPrint("=================================");
+      debugPrint("MISSING FILE LOADED");
+      debugPrint("File: ${file.name}");
+      debugPrint("Rows: ${rows.length}");
+      debugPrint("=================================");
+
+      for (int i = 0; i < rows.length && i < 5; i++) {
+        debugPrint("ROW $i: ${rows[i]}");
+      }
+
+      if (!mounted) return;
 
       setState(() {
+        inventoryRows = rows;
+
+        inventoryFileName = file.name;
+
+        generatedFileBytes = null;
+
         statusText = "Missing Items Loaded Successfully ✔";
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
-        statusText = e.toString();
+        statusText = "Failed to read Excel:\n$e";
       });
     }
+  }
+
+  // ==========================
+  // Find Qty Column
+  // ==========================
+
+  int findQtyColumn(List<String> header) {
+    for (int i = 0; i < header.length; i++) {
+      final value = header[i]
+          .toString()
+          .trim()
+          .toLowerCase()
+          .replaceAll("_", " ")
+          .replaceAll("-", " ");
+
+      if (value == "qty" ||
+          value == "quantity" ||
+          value == "quantities" ||
+          value == "required qty" ||
+          value == "required quantity" ||
+          value == "order qty" ||
+          value == "order quantity") {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  // ==========================
+  // Extract Missing Items
+  // ==========================
+  //
+  // IMPORTANT:
+  //
+  // We NEVER search for a number inside
+  // the Item name.
+  //
+  // The Qty is taken from the Qty column.
+  //
+  // If there is no Qty header:
+  // first column = Item
+  // second column = Qty
+  //
+
+  Map<String, Map<String, dynamic>> buildMergedMissingItems() {
+    final Map<String, Map<String, dynamic>> merged = {};
+
+    if (inventoryRows.isEmpty) {
+      return merged;
+    }
+
+    // ==========================
+    // Detect Qty Header
+    // ==========================
+
+    final header = inventoryRows.first;
+
+    int qtyColumnIndex = findQtyColumn(header);
+
+    debugPrint("=================================");
+    debugPrint("MISSING FILE ANALYSIS");
+    debugPrint("Header: $header");
+    debugPrint("Detected Qty Column: $qtyColumnIndex");
+    debugPrint("=================================");
+
+    // ==========================
+    // Process Rows
+    // ==========================
+
+    for (int i = 1; i < inventoryRows.length; i++) {
+      final row = inventoryRows[i];
+
+      if (row.isEmpty) {
+        continue;
+      }
+
+      String item = "";
+      int qty = 0;
+
+      // ==================================================
+      // CASE 1
+      // Qty column was found from Header
+      // ==================================================
+
+      if (qtyColumnIndex >= 0 && qtyColumnIndex < row.length) {
+        final qtyText = row[qtyColumnIndex].toString().trim().replaceAll(
+          ",",
+          "",
+        );
+
+        qty = int.tryParse(qtyText) ?? 0;
+
+        final itemParts = <String>[];
+
+        for (int x = 0; x < row.length; x++) {
+          if (x == qtyColumnIndex) {
+            continue;
+          }
+
+          final value = row[x].trim();
+
+          if (value.isEmpty) {
+            continue;
+          }
+
+          itemParts.add(value);
+        }
+
+        item = itemParts.join(" ").trim();
+      }
+      // ==================================================
+      // CASE 2
+      // No Qty header
+      //
+      // First column = Item
+      // Second column = Qty
+      // ==================================================
+      else if (row.length >= 2) {
+        item = row[0].trim();
+
+        final qtyText = row[1].trim().replaceAll(",", "");
+
+        qty = int.tryParse(qtyText) ?? 0;
+
+        // لو فيه أعمدة إضافية تخص اسم الصنف
+        if (row.length > 2) {
+          final extraParts = <String>[];
+
+          for (int x = 2; x < row.length; x++) {
+            final value = row[x].trim();
+
+            if (value.isNotEmpty) {
+              extraParts.add(value);
+            }
+          }
+
+          if (extraParts.isNotEmpty) {
+            item = "$item ${extraParts.join(" ")}".trim();
+          }
+        }
+      }
+
+      // ==================================================
+      // Invalid Row
+      // ==================================================
+
+      if (item.isEmpty) {
+        debugPrint("SKIPPED ROW $i: Item is empty");
+        continue;
+      }
+
+      // ==========================
+      // Normalize Item
+      // ==========================
+
+      final key = Matcher.normalize(item);
+
+      // ==========================
+      // Merge Duplicate Items
+      // ==========================
+
+      if (merged.containsKey(key)) {
+        merged[key]!["qty"] = (merged[key]!["qty"] as int) + qty;
+
+        debugPrint("MERGED: $item | +$qty");
+      } else {
+        merged[key] = {"item": item, "qty": qty};
+
+        debugPrint("MISSING ITEM: $item | QTY: $qty");
+      }
+    }
+
+    debugPrint("=================================");
+    debugPrint("MERGED MISSING ITEMS: ${merged.length}");
+    debugPrint("=================================");
+
+    for (final data in merged.values) {
+      debugPrint("${data["item"]} | QTY = ${data["qty"]}");
+    }
+
+    return merged;
   }
 
   // ==========================
   // Generate Order
   // ==========================
 
-  Future<void> generateOrder() async {
-    if (inventoryRows.isEmpty || orderRows.isEmpty) {
+  Future generateOrder() async {
+    if (inventoryRows.isEmpty) {
       setState(() {
-        statusText = "Upload Missing Items and select Warehouse";
+        statusText = "Please upload Missing Items first.";
       });
 
       return;
     }
 
-    setState(() {
-      isGenerating = true;
+    if (orderRows.isEmpty) {
+      setState(() {
+        statusText = "Please select a Warehouse first.";
+      });
 
-      statusText = "Processing...";
-    });
-
-    final excel = Excel.createExcel();
-
-    final resultSheet = excel["Sheet1"];
-
-    final missingSheet = excel["Missing"];
-
-    resultSheet.appendRow([
-      TextCellValue("Item"),
-
-      TextCellValue("Qty"),
-
-      TextCellValue("Matched Item"),
-
-      TextCellValue("Purchase Price"),
-
-      TextCellValue("Sale Price"),
-
-      TextCellValue("Total"),
-    ]);
-
-    double totalSale = 0;
-
-    // دمج الأصناف المتكررة
-
-    final Map<String, dynamic> merged = {};
-
-    for (int i = 1; i < inventoryRows.length; i++) {
-      final row = inventoryRows[i];
-
-      if (row.isEmpty) continue;
-
-      String item = "";
-
-      int qty = 0;
-
-      for (final c in row) {
-        if (RegExp(r'^\d+$').hasMatch(c.trim())) {
-          qty = int.tryParse(c.trim()) ?? 0;
-
-          break;
-        }
-
-        item += "$c ";
-      }
-
-      item = item.trim();
-
-      if (item.isEmpty) continue;
-
-      final key = Matcher.normalize(item);
-
-      if (merged.containsKey(key)) {
-        merged[key]["qty"] += qty;
-      } else {
-        merged[key] = {"item": item, "qty": qty};
-      }
+      return;
     }
 
-    final similarItems = <Map<String, dynamic>>[];
+    if (isGenerating) return;
 
-    final notFound = <Map<String, dynamic>>[];
+    setState(() {
+      isGenerating = true;
+      statusText = "Processing order...";
+      generatedFileBytes = null;
+    });
 
-    for (final data in merged.values) {
-      final item = data["item"];
+    try {
+      final excel = Excel.createExcel();
 
-      final qty = data["qty"];
+      final resultSheet = excel["Sheet1"];
 
-      bool found = false;
+      final missingSheet = excel["Missing"];
 
-      double best = 0;
+      // ==========================
+      // Result Headers
+      // ==========================
 
-      String bestItem = "";
+      resultSheet.appendRow([
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Matched Item"),
+        TextCellValue("Purchase Price"),
 
-      for (final warehouse in orderRows) {
-        final warehouseItem = warehouse[0];
+        TextCellValue("Total"),
+      ]);
 
-        final result = Matcher.findBestMatch(Matcher.normalize(item), [
-          {
-            "original": warehouseItem,
+      double totalSale = 0;
 
-            "normalized": Matcher.normalize(warehouseItem),
-          },
-        ]);
+      // ==========================
+      // Build Missing Items
+      // ==========================
 
-        if (result.score > best) {
-          best = result.score.toDouble();
+      final merged = buildMergedMissingItems();
 
-          bestItem = warehouseItem;
+      if (merged.isEmpty) {
+        throw Exception("No valid items found in Missing file.");
+      }
+
+      // ==========================
+      // Match Lists
+      // ==========================
+
+      final similarItems = <Map<String, dynamic>>[];
+
+      final notFound = <Map<String, dynamic>>[];
+
+      // ==========================
+      // Match Every Item
+      // ==========================
+
+      int processed = 0;
+
+      for (final data in merged.values) {
+        final String item = data["item"].toString();
+
+        final int qty = data["qty"] as int;
+
+        bool found = false;
+
+        double bestScore = 0;
+
+        String bestItem = "";
+
+        List<String>? bestWarehouse;
+
+        // ==========================
+        // Find BEST Match
+        // ==========================
+
+        for (final warehouse in orderRows) {
+          if (warehouse.isEmpty) {
+            continue;
+          }
+
+          final warehouseItem = warehouse[0].trim();
+
+          if (warehouseItem.isEmpty) {
+            continue;
+          }
+
+          final result = Matcher.findBestMatch(Matcher.normalize(item), [
+            {
+              "original": warehouseItem,
+              "normalized": Matcher.normalize(warehouseItem),
+            },
+          ]);
+
+          if (result.score > bestScore) {
+            bestScore = result.score.toDouble();
+
+            bestItem = warehouseItem;
+
+            bestWarehouse = warehouse;
+          }
         }
 
-        if (result.score >= 60) {
+        // ==========================
+        // Match >= 60
+        // ==========================
+
+        if (bestScore >= 60 && bestWarehouse != null) {
+          final warehouse = bestWarehouse;
+
           double purchase = 0;
 
           double sale = 0;
 
-          double total = 0;
+          // ==========================
+          // Purchase Price
+          // ==========================
+
+          if (warehouse.length >= 3) {
+            purchase =
+                double.tryParse(warehouse[2].replaceAll(",", "").trim()) ?? 0;
+          }
+
+          // ==========================
+          // Sale Price
+          // ==========================
 
           if (warehouse.length >= 4) {
-            purchase = double.tryParse(warehouse[2]) ?? 0;
-
-            sale = double.tryParse(warehouse[3]) ?? 0;
-
-            total = sale * qty;
-
-            totalSale += total;
+            sale =
+                double.tryParse(warehouse[3].replaceAll(",", "").trim()) ?? 0;
           }
+
+          // ==========================
+          // Total
+          // ==========================
+
+          final total = sale * qty;
+
+          debugPrint(
+            "MATCHED ITEM: $bestItem | "
+            "SCORE: $bestScore | "
+            "PURCHASE: $purchase | "
+            "SALE: $sale | "
+            "QTY: $qty | "
+            "TOTAL: $total",
+          );
+
+          totalSale += total;
 
           resultSheet.appendRow([
             TextCellValue(item),
-
             TextCellValue(qty.toString()),
-
-            TextCellValue(warehouseItem),
-
-            TextCellValue(purchase.toString()),
-
-            TextCellValue(sale.toString()),
-
-            TextCellValue(total.toString()),
+            TextCellValue(bestItem),
+            TextCellValue(purchase.toStringAsFixed(3)),
+            TextCellValue(sale.toStringAsFixed(3)),
+            TextCellValue(total.toStringAsFixed(3)),
           ]);
 
           found = true;
+        }
 
-          break;
+        // ==========================
+        // Not Found
+        // ==========================
+
+        if (!found) {
+          final matchData = {
+            "item": item,
+            "qty": qty,
+            "similar": bestItem,
+            "score": bestScore.toStringAsFixed(0),
+          };
+
+          if (bestScore >= 40) {
+            similarItems.add(matchData);
+          } else {
+            notFound.add(matchData);
+          }
+        }
+
+        processed++;
+
+        if (mounted) {
+          setState(() {
+            statusText = "Processing $processed / ${merged.length}...";
+          });
         }
       }
 
-      if (!found) {
-        final m = {
-          "item": item,
+      // ==========================
+      // Missing Sheet
+      // ==========================
 
-          "qty": qty,
+      missingSheet.appendRow([
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Similar Item"),
+        TextCellValue("Match %"),
+      ]);
 
-          "similar": bestItem,
+      // ==========================
+      // Possible Matches
+      // ==========================
 
-          "score": best.toStringAsFixed(0),
-        };
+      missingSheet.appendRow([TextCellValue("POSSIBLE MATCHES")]);
 
-        if (best >= 40)
-          similarItems.add(m);
-        else
-          notFound.add(m);
+      for (final item in similarItems) {
+        missingSheet.appendRow([
+          TextCellValue(item["item"].toString()),
+          TextCellValue(item["qty"].toString()),
+          TextCellValue(item["similar"].toString()),
+          TextCellValue("${item["score"]}%"),
+        ]);
       }
-    }
-    // ==========================
-    // Missing Sheet
-    // ==========================
 
-    missingSheet.appendRow([
-      TextCellValue("Item"),
+      // ==========================
+      // Empty Row
+      // ==========================
 
-      TextCellValue("Qty"),
+      missingSheet.appendRow([]);
 
-      TextCellValue("Similar Item"),
+      // ==========================
+      // Not Matched
+      // ==========================
 
-      TextCellValue("Match %"),
-    ]);
+      missingSheet.appendRow([TextCellValue("NOT MATCHED ITEMS")]);
 
-    missingSheet.appendRow([TextCellValue("POSSIBLE MATCHES")]);
-
-    for (final e in similarItems) {
       missingSheet.appendRow([
-        TextCellValue(e["item"]),
-
-        TextCellValue(e["qty"].toString()),
-
-        TextCellValue(e["similar"]),
-
-        TextCellValue("${e["score"]}%"),
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Similar Item"),
+        TextCellValue("Match %"),
       ]);
-    }
 
-    missingSheet.appendRow([]);
+      for (final item in notFound) {
+        missingSheet.appendRow([
+          TextCellValue(item["item"].toString()),
+          TextCellValue(item["qty"].toString()),
+          TextCellValue(item["similar"].toString()),
+          TextCellValue("${item["score"]}%"),
+        ]);
+      }
 
-    missingSheet.appendRow([TextCellValue("NOT MATCHED ITEMS")]);
+      // ==========================
+      // Total
+      // ==========================
 
-    for (final e in notFound) {
-      missingSheet.appendRow([
-        TextCellValue(e["item"]),
+      resultSheet.appendRow([]);
 
-        TextCellValue(e["qty"].toString()),
-
-        TextCellValue(e["similar"]),
-
-        TextCellValue("${e["score"]}%"),
+      resultSheet.appendRow([
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue("TOTAL"),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(totalSale.toStringAsFixed(3)),
       ]);
+
+      // ==========================
+      // Generate Excel Bytes
+      // ==========================
+
+      final encoded = excel.encode();
+
+      if (encoded == null) {
+        throw Exception("Could not generate Excel file.");
+      }
+
+      generatedFileBytes = Uint8List.fromList(encoded);
+
+      if (!mounted) return;
+
+      setState(() {
+        isGenerating = false;
+
+        statusText = "Order generated successfully ✔";
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isGenerating = false;
+
+        statusText = "Error generating order:\n$e";
+      });
     }
-
-    resultSheet.appendRow([]);
-
-    resultSheet.appendRow([
-      TextCellValue(""),
-
-      TextCellValue(""),
-
-      TextCellValue("TOTAL"),
-
-      TextCellValue(""),
-
-      TextCellValue(""),
-
-      TextCellValue(totalSale.toStringAsFixed(3)),
-    ]);
-
-    generatedFileBytes = Uint8List.fromList(excel.encode()!);
-
-    setState(() {
-      isGenerating = false;
-
-      statusText = "Done ✔";
-    });
   }
 
   // ==========================
@@ -441,9 +849,8 @@ class _OrderScreenState extends State<OrderScreen> {
   // Save History
   // ==========================
 
-  Future<void> saveOrderLocally({
+  Future saveOrderLocally({
     required String fileName,
-
     required String filePath,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -452,11 +859,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final order = {
       "fileName": fileName,
-
       "filePath": filePath,
-
       "date": DateFormat("yyyy-MM-dd").format(DateTime.now()),
-
       "items": inventoryRows.length,
     };
 
@@ -466,35 +870,49 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ==========================
-  // Download Excel
+  // Save Generated Excel
   // ==========================
 
-  Future<void> downloadFile(Uint8List bytes) async {
-    final location = await getSaveLocation(suggestedName: "Order.xlsx");
+  Future downloadFile(Uint8List bytes) async {
+    try {
+      final location = await getSaveLocation(suggestedName: "Order.xlsx");
 
-    if (location == null) return;
+      if (location == null) {
+        return;
+      }
 
-    final path = location.path.endsWith(".xlsx")
-        ? location.path
-        : "${location.path}.xlsx";
+      final path = location.path.endsWith(".xlsx")
+          ? location.path
+          : "${location.path}.xlsx";
 
-    final file = File(path);
+      final file = File(path);
 
-    await file.writeAsBytes(bytes);
+      await file.writeAsBytes(bytes);
 
-    await saveOrderLocally(fileName: path.split("\\").last, filePath: path);
+      final fileName = path.split(Platform.pathSeparator).last;
 
-    setState(() {
-      statusText = "Saved Successfully ✔";
-    });
+      await saveOrderLocally(fileName: fileName, filePath: path);
 
-    await Process.run('cmd', ['/c', 'start', '', path]);
+      if (!mounted) return;
 
-    resetScreen();
+      setState(() {
+        statusText = "Saved Successfully ✔";
+      });
+
+      await Process.run('cmd', ['/c', 'start', '', path]);
+
+      resetScreen();
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        statusText = "Error saving file:\n$e";
+      });
+    }
   }
 
   // ==========================
-  // BUILD UI
+  // BUILD
   // ==========================
 
   @override
@@ -509,20 +927,26 @@ class _OrderScreenState extends State<OrderScreen> {
 
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xff0050c0)),
-
           onPressed: () {
             Navigator.pop(context);
           },
         ),
 
+        title: const Text(
+          "Stock Gap",
+          style: TextStyle(
+            color: Color(0xff0050c0),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
         actions: [
           IconButton(
             icon: const Icon(Icons.history, color: Color(0xff0050c0)),
-
+            tooltip: "History",
             onPressed: () {
               Navigator.push(
                 context,
-
                 MaterialPageRoute(builder: (_) => HistoryScreen()),
               );
             },
@@ -530,7 +954,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
           IconButton(
             icon: const Icon(Icons.logout, color: Color(0xff0050c0)),
-
             onPressed: logout,
           ),
         ],
@@ -538,139 +961,345 @@ class _OrderScreenState extends State<OrderScreen> {
 
       body: Center(
         child: SingleChildScrollView(
-          child: SizedBox(
-            width: 800,
+          padding: const EdgeInsets.all(24),
 
-            child: Padding(
-              padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1000),
 
-              child: Column(
-                children: [
-                  const Text(
-                    "Stock Gap Generator",
+            child: Column(
+              children: [
+                // ==================================================
+                // TITLE
+                // ==================================================
+                const Text(
+                  "Stock Gap Generator",
+                  textAlign: TextAlign.center,
 
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xff0050c0),
                   ),
+                ),
 
-                  const SizedBox(height: 40),
+                const SizedBox(height: 8),
 
-                  _buildUploadCard(
-                    title: "Missing Items",
+                const Text(
+                  "Upload missing items and select a warehouse",
+                  textAlign: TextAlign.center,
 
-                    fileName: inventoryFileName,
+                  style: TextStyle(color: Colors.grey, fontSize: 15),
+                ),
 
-                    icon: Icons.inventory,
+                const SizedBox(height: 35),
 
-                    onPressed: pickInventory,
-                  ),
+                // ==================================================
+                // UPLOAD + WAREHOUSE ROW
+                // ==================================================
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isSmall = constraints.maxWidth < 750;
 
-                  const SizedBox(height: 25),
+                    final uploadCard = _buildUploadCard(
+                      title: "Missing Items",
+                      fileName: inventoryFileName,
+                      icon: Icons.inventory_2,
+                      onPressed: pickInventory,
+                    );
 
-                  Card(
-                    elevation: 4,
+                    final warehouseCard = Card(
+                      elevation: 4,
 
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
 
-                      child: Column(
-                        children: [
-                          const Text(
-                            "Select Warehouse",
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
 
-                            style: TextStyle(
-                              fontSize: 18,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
 
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  selectedWarehouseId != null
+                                      ? Icons.check_circle
+                                      : Icons.warehouse,
 
-                          const SizedBox(height: 15),
+                                  size: 50,
 
-                          loadingWarehouses
-                              ? const CircularProgressIndicator()
-                              : DropdownButtonFormField<String>(
-                                  value: selectedWarehouseId,
-
-                                  hint: const Text("Choose Warehouse"),
-
-                                  items: warehouses.map((w) {
-                                    return DropdownMenuItem<String>(
-                                      value: w["id"],
-
-                                      child: Text(w["name"]),
-                                    );
-                                  }).toList(),
-
-                                  onChanged: (value) async {
-                                    if (value == null) return;
-
-                                    setState(() {
-                                      selectedWarehouseId = value;
-                                    });
-
-                                    await loadWarehouseItems(value);
-                                  },
+                                  color: selectedWarehouseId != null
+                                      ? Colors.green
+                                      : const Color(0xff0050c0),
                                 ),
+
+                                const SizedBox(width: 15),
+
+                                const Expanded(
+                                  child: Text(
+                                    "Select Warehouse",
+
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 18),
+
+                            loadingWarehouses
+                                ? const Center(
+                                    child: CircularProgressIndicator(),
+                                  )
+                                : DropdownButtonFormField<String>(
+                                    value: selectedWarehouseId,
+
+                                    isExpanded: true,
+
+                                    decoration: InputDecoration(
+                                      labelText: "Warehouse",
+
+                                      prefixIcon: const Icon(
+                                        Icons.warehouse,
+                                        color: Color(0xff0050c0),
+                                      ),
+
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+
+                                    hint: const Text("Choose Warehouse"),
+
+                                    items: warehouses.map((warehouse) {
+                                      return DropdownMenuItem<String>(
+                                        value: warehouse["id"].toString(),
+
+                                        child: Text(
+                                          warehouse["name"].toString(),
+
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      );
+                                    }).toList(),
+
+                                    onChanged: (value) async {
+                                      if (value == null) {
+                                        return;
+                                      }
+
+                                      setState(() {
+                                        selectedWarehouseId = value;
+
+                                        orderRows.clear();
+
+                                        statusText =
+                                            "Loading warehouse inventory...";
+                                      });
+
+                                      await loadWarehouseItems(value);
+                                    },
+                                  ),
+
+                            const SizedBox(height: 15),
+
+                            if (selectedWarehouseId != null)
+                              Row(
+                                children: [
+                                  Icon(
+                                    orderRows.isNotEmpty
+                                        ? Icons.check_circle
+                                        : Icons.sync,
+
+                                    size: 18,
+
+                                    color: orderRows.isNotEmpty
+                                        ? Colors.green
+                                        : const Color(0xff0050c0),
+                                  ),
+
+                                  const SizedBox(width: 8),
+
+                                  Expanded(
+                                    child: Text(
+                                      orderRows.isNotEmpty
+                                          ? "${orderRows.length} warehouse items loaded ✔"
+                                          : statusText,
+
+                                      style: TextStyle(
+                                        color: orderRows.isNotEmpty
+                                            ? Colors.green
+                                            : const Color(0xff0050c0),
+
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+
+                    // ==================================================
+                    // DESKTOP / LARGE SCREEN
+                    // ==================================================
+
+                    if (!isSmall) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+
+                        children: [
+                          Expanded(child: uploadCard),
+
+                          const SizedBox(width: 20),
+
+                          Expanded(child: warehouseCard),
                         ],
+                      );
+                    }
+
+                    // ==================================================
+                    // SMALL SCREEN
+                    // ==================================================
+
+                    return Column(
+                      children: [
+                        uploadCard,
+
+                        const SizedBox(height: 20),
+
+                        warehouseCard,
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 30),
+
+                // ==================================================
+                // GENERATE BUTTON
+                // ==================================================
+                SizedBox(
+                  width: double.infinity,
+
+                  height: 58,
+
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        inventoryRows.isNotEmpty &&
+                            orderRows.isNotEmpty &&
+                            !isGenerating
+                        ? generateOrder
+                        : null,
+
+                    icon: isGenerating
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.play_arrow, size: 25),
+
+                    label: Text(
+                      isGenerating ? "Processing..." : "Generate Order",
+
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+
+                      foregroundColor: Colors.white,
+
+                      disabledBackgroundColor: Colors.grey.shade400,
+
+                      disabledForegroundColor: Colors.white,
+
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 30),
+                const SizedBox(height: 20),
 
+                // ==================================================
+                // SAVE EXCEL
+                // ==================================================
+                if (generatedFileBytes != null)
                   SizedBox(
                     width: double.infinity,
 
-                    height: 55,
+                    height: 52,
 
-                    child: ElevatedButton.icon(
-                      onPressed:
-                          inventoryRows.isNotEmpty &&
-                              orderRows.isNotEmpty &&
-                              !isGenerating
-                          ? generateOrder
-                          : null,
-
-                      icon: isGenerating
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Icon(Icons.play_arrow),
-
-                      label: Text(
-                        isGenerating ? "Processing..." : "Generate Order",
-                      ),
-
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  if (generatedFileBytes != null)
-                    ElevatedButton.icon(
-                      onPressed: () => downloadFile(generatedFileBytes!),
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        downloadFile(generatedFileBytes!);
+                      },
 
                       icon: const Icon(Icons.download),
 
-                      label: const Text("Save Excel"),
-                    ),
+                      label: const Text(
+                        "Save Excel",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
 
-                  const SizedBox(height: 20),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xff0050c0),
 
-                  Text(
-                    statusText,
+                        side: const BorderSide(color: Color(0xff0050c0)),
 
-                    style: const TextStyle(
-                      color: Color(0xff0050c0),
-
-                      fontWeight: FontWeight.bold,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                ],
-              ),
+
+                const SizedBox(height: 20),
+
+                // ==================================================
+                // STATUS
+                // ==================================================
+                if (statusText.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+
+                    padding: const EdgeInsets.all(16),
+
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+
+                    child: Text(
+                      statusText,
+
+                      textAlign: TextAlign.center,
+
+                      style: const TextStyle(
+                        color: Color(0xff0050c0),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -678,13 +1307,14 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
+  // ==========================
+  // Upload Card
+  // ==========================
+
   Widget _buildUploadCard({
     required String title,
-
     required String? fileName,
-
     required IconData icon,
-
     required VoidCallback onPressed,
   }) {
     return Card(
@@ -697,10 +1327,10 @@ class _OrderScreenState extends State<OrderScreen> {
           children: [
             Icon(
               fileName != null ? Icons.check_circle : icon,
+
               size: 50,
-              color: fileName != null
-                  ? Colors.green
-                  : const Color(0xff0050c0),
+
+              color: fileName != null ? Colors.green : const Color(0xff0050c0),
             ),
 
             const SizedBox(width: 20),
@@ -708,9 +1338,11 @@ class _OrderScreenState extends State<OrderScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+
                 children: [
                   Text(
                     title,
+
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -721,7 +1353,9 @@ class _OrderScreenState extends State<OrderScreen> {
 
                   Text(
                     fileName ?? "No file selected",
+
                     maxLines: 2,
+
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -732,9 +1366,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
             ElevatedButton(
               onPressed: onPressed,
-              child: Text(
-                fileName == null ? "Upload" : "Change",
-              ),
+
+              child: Text(fileName == null ? "Upload" : "Change"),
             ),
           ],
         ),

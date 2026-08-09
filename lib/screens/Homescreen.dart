@@ -1,13 +1,14 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:stockgap2026/screens/store_inventory_screen.dart';
+
 import 'OrderScreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'main_menu_screen.dart';
 
 class Homescreen extends StatefulWidget {
-  Homescreen({super.key});
+  const Homescreen({super.key});
 
   static const String routeName = 'Homescreen';
 
@@ -17,8 +18,10 @@ class Homescreen extends StatefulWidget {
 
 class _HomescreenState extends State<Homescreen> {
   final codeController = TextEditingController();
-
   final passwordController = TextEditingController();
+
+  bool isLoading = false;
+  bool isCheckingLogin = false;
 
   @override
   void dispose() {
@@ -27,17 +30,14 @@ class _HomescreenState extends State<Homescreen> {
     super.dispose();
   }
 
-  bool isLoading = false;
-
   @override
   void initState() {
     super.initState();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       checkLogin();
     });
   }
-
-  bool isCheckingLogin = false;
 
   @override
   Widget build(BuildContext context) {
@@ -48,361 +48,130 @@ class _HomescreenState extends State<Homescreen> {
           child: Container(
             width: 420,
             padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Card Container
-                Card(
-                  elevation: 8,
-                  shadowColor: Colors.black12,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(26),
-                    child: Column(
-                      children: [
-                        // Logo
-                        Image.asset('assets/images/back.png', scale: 2.7),
-
-                        const SizedBox(height: 12),
-
-                        const Text(
-                          "Stock Gap Generator",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xff0050c0),
-                          ),
-                        ),
-
-                        const SizedBox(height: 25),
-
-                        // Store Code
-                        TextFormField(
-                          controller: codeController,
-                          decoration: InputDecoration(
-                            labelText: 'Pharmacy / Store Code',
-                            prefixIcon: const Icon(Icons.store),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
-                              ),
-                            ),
-                            focusedBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(
-                                color: Color(0xff0050c0),
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 15),
-
-                        // Password
-                        TextFormField(
-                          controller: passwordController,
-                          obscureText: true,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: const Icon(Icons.lock),
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(
-                                color: Colors.grey.shade300,
-                              ),
-                            ),
-                            focusedBorder: const OutlineInputBorder(
-                              borderSide: BorderSide(
-                                color: Color(0xff0050c0),
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 25),
-
-                        // Login Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: () async {
-                              setState(() => isLoading = true);
-
-                              try {
-                                final username = codeController.text.trim();
-                                final password = passwordController.text.trim();
-
-                                if (username.isEmpty || password.isEmpty) {
-                                  setState(() => isLoading = false);
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Enter username and password",
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                QuerySnapshot<Map<String, dynamic>> result;
-
-
-// البحث أولاً في users (الصيدليات)
-                                result = await FirebaseFirestore.instance
-                                    .collection("users")
-                                    .where("username", isEqualTo: username)
-                                    .limit(1)
-                                    .get(
-                                  const GetOptions(source: Source.server),
-                                );
-
-
-// لو مش موجود يبحث في stores (المخازن)
-                                if (result.docs.isEmpty) {
-
-                                  result = await FirebaseFirestore.instance
-                                      .collection("stores")
-                                      .where("username", isEqualTo: username)
-                                      .limit(1)
-                                      .get(
-                                    const GetOptions(source: Source.server),
-                                  );
-
-                                }
-
-
-// غير موجود في الاثنين
-                                if (result.docs.isEmpty) {
-
-                                  setState(() => isLoading = false);
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("User not found"),
-                                    ),
-                                  );
-
-                                  return;
-
-                                }
-
-
-
-                                final doc = result.docs.first;
-
-                                final data = doc.data();
-
-                                final docRef = doc.reference;
-
-                                // PASSWORD
-                                if (data["password"] != password) {
-                                  setState(() => isLoading = false);
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Wrong password"),
-                                    ),
-                                  );
-
-                                  return;
-                                }
-
-                                // ACTIVE
-                                if (data["active"] != true) {
-                                  setState(() => isLoading = false);
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Account disabled"),
-                                    ),
-                                  );
-
-                                  return;
-                                }
-
-                                // EXPIRE DATE
-
-                                final expireDate =
-                                    data["expireDate"] is Timestamp
-                                    ? data["expireDate"] as Timestamp
-                                    : null;
-
-                                if (expireDate != null &&
-                                    DateTime.now().isAfter(
-                                      expireDate.toDate(),
-                                    )) {
-                                  setState(() => isLoading = false);
-
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Subscription expired"),
-                                    ),
-                                  );
-
-                                  return;
-                                }
-
-                                // DEVICE SYSTEM
-
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-
-                                String deviceId =
-                                    prefs.getString("deviceId") ?? "";
-
-                                if (deviceId.isEmpty) {
-                                  deviceId = DateTime.now()
-                                      .microsecondsSinceEpoch
-                                      .toString();
-
-                                  await prefs.setString("deviceId", deviceId);
-                                }
-
-                                List devices = List.from(data["devices"] ?? []);
-
-                                // تنظيف القيم الغلط
-                                devices = devices
-                                    .where((d) => d is Map)
-                                    .map((d) => Map<String, dynamic>.from(d))
-                                    .toList();
-
-                                // هل الجهاز موجود؟
-                                bool exists = devices.any(
-                                  (d) => d["deviceId"] == deviceId,
-                                );
-
-                                int maxDevices = data["maxDevices"] ?? 1;
-
-                                if (!exists) {
-                                  if (devices.length >= maxDevices) {
-                                    setState(() => isLoading = false);
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          "Too many devices logged in",
-                                        ),
-                                      ),
-                                    );
-
-                                    return;
-                                  }
-
-                                  devices.add({
-                                    "deviceId": deviceId,
-
-                                    "deviceName": "Flutter Windows",
-
-                                    "loginTime": DateTime.now()
-                                        .toIso8601String(),
-                                  });
-
-                                  await docRef.update({"devices": devices});
-                                }
-
-                                // SAVE LOGIN
-
-                                final role = data["role"] ?? "pharmacy";
-
-                                await prefs.setString(
-                                  "username",
-                                  username,
-                                );
-
-                                await prefs.setString(
-                                  "role",
-                                  role,
-                                );
-
-
-                                setState(() => isLoading = false);
-
-
-// المخزن يرفع ملفه
-                                if (role == "store") {
-
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => StoreInventoryScreen(
-                                        storeCode: username,
-                                        expireDate: expireDate,
-                                      ),
-                                    ),
-                                  );
-
-                                }
-
-
-// الصيدلية تعمل طلب
-                                else {
-
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => MainMenuScreen(
-                                        storeCode: username,
-                                        expireDate: expireDate, role: '',
-                                      ),
-                                    ),
-                                  );
-
-                                }
-                              } catch (e, stack) {
-                                print(e);
-                                print(stack);
-
-                                setState(() => isLoading = false);
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString())),
-                                );
-                              }
-                            },
-
-                            // 🔥 هنا تغيير لون الزر
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(
-                                0xff0050c0,
-                              ), // لون الزر
-                              foregroundColor: Colors.white, // لون النص
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 40,
-                                vertical: 14,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-
-                            child: isLoading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white,
-                                  )
-                                : const Text("Login"),
-                          ),
-                        ),
-                      ],
+            child: Card(
+              elevation: 8,
+              shadowColor: Colors.black12,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(26),
+                child: Column(
+                  children: [
+                    // ==================================================
+                    // LOGO
+                    // ==================================================
+                    Image.asset('assets/images/back.png', scale: 2.7),
+
+                    const SizedBox(height: 12),
+
+                    const Text(
+                      "Stock Gap Generator",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xff0050c0),
+                      ),
                     ),
-                  ),
+
+                    const SizedBox(height: 25),
+
+                    // ==================================================
+                    // USERNAME
+                    // ==================================================
+                    TextFormField(
+                      controller: codeController,
+                      decoration: InputDecoration(
+                        labelText: 'Pharmacy / Store Code',
+                        prefixIcon: const Icon(Icons.store),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Color(0xff0050c0),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    // ==================================================
+                    // PASSWORD
+                    // ==================================================
+                    TextFormField(
+                      controller: passwordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: Color(0xff0050c0),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 25),
+
+                    // ==================================================
+                    // LOGIN BUTTON
+                    // ==================================================
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                await login();
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xff0050c0),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text("Login"),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -410,64 +179,406 @@ class _HomescreenState extends State<Homescreen> {
     );
   }
 
+  // ================================================================
+  // LOGIN
+  // ================================================================
+
+  Future<void> login() async {
+    if (isLoading) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final username = codeController.text.trim();
+      final password = passwordController.text.trim();
+
+      // ============================================================
+      // VALIDATION
+      // ============================================================
+
+      if (username.isEmpty || password.isEmpty) {
+        _stopLoading();
+
+        _showMessage("Enter username and password");
+
+        return;
+      }
+
+      final firestore = FirebaseFirestore.instance;
+
+      QuerySnapshot<Map<String, dynamic>> result;
+
+      // ============================================================
+      // 1. SEARCH USERS
+      //    Pharmacy accounts
+      // ============================================================
+
+      result = await firestore
+          .collection("users")
+          .where("username", isEqualTo: username)
+          .limit(1)
+          .get(const GetOptions(source: Source.server));
+
+      bool isStore = false;
+
+      // ============================================================
+      // 2. IF NOT FOUND -> SEARCH STORES
+      // ============================================================
+
+      if (result.docs.isEmpty) {
+        result = await firestore
+            .collection("stores")
+            .where("username", isEqualTo: username)
+            .limit(1)
+            .get(const GetOptions(source: Source.server));
+
+        isStore = true;
+      }
+
+      // ============================================================
+      // USER NOT FOUND
+      // ============================================================
+
+      if (result.docs.isEmpty) {
+        _stopLoading();
+
+        _showMessage("User not found");
+
+        return;
+      }
+
+      // ============================================================
+      // DOCUMENT
+      // ============================================================
+
+      final doc = result.docs.first;
+
+      final data = doc.data();
+
+      final docRef = doc.reference;
+
+      // ============================================================
+      // IMPORTANT
+      //
+      // doc.id is the REAL Firestore document ID.
+      //
+      // Example:
+      //
+      // stores
+      //   └── M001
+      //        ├── username: Sahara
+      //        └── inventory
+      //
+      // So we MUST use:
+      //
+      // doc.id = M001
+      //
+      // NOT:
+      //
+      // username = Sahara
+      // ============================================================
+
+      final firestoreDocumentId = doc.id;
+
+      debugPrint("=================================");
+      debugPrint("LOGIN SUCCESS");
+      debugPrint("COLLECTION: ${doc.reference.parent.id}");
+      debugPrint("DOCUMENT ID: $firestoreDocumentId");
+      debugPrint("USERNAME: $username");
+      debugPrint("DATA: $data");
+      debugPrint("IS STORE: $isStore");
+      debugPrint("=================================");
+
+      // ============================================================
+      // PASSWORD
+      // ============================================================
+
+      if (data["password"] != password) {
+        _stopLoading();
+
+        _showMessage("Wrong password");
+
+        return;
+      }
+
+      // ============================================================
+      // ACTIVE
+      //
+      // Stores are currently not checked here.
+      // ============================================================
+
+      if (!isStore && data["active"] != true) {
+        _stopLoading();
+
+        _showMessage("Account disabled");
+
+        return;
+      }
+
+      // ============================================================
+      // EXPIRE DATE
+      // ============================================================
+
+      final expireDate = data["expireDate"] is Timestamp
+          ? data["expireDate"] as Timestamp
+          : null;
+
+      if (expireDate != null && DateTime.now().isAfter(expireDate.toDate())) {
+        _stopLoading();
+
+        _showMessage("Subscription expired");
+
+        return;
+      }
+
+      // ============================================================
+      // DEVICE SYSTEM
+      // ============================================================
+
+      final prefs = await SharedPreferences.getInstance();
+
+      String deviceId = prefs.getString("deviceId") ?? "";
+
+      if (deviceId.isEmpty) {
+        deviceId = DateTime.now().microsecondsSinceEpoch.toString();
+
+        await prefs.setString("deviceId", deviceId);
+      }
+
+      // ============================================================
+      // READ DEVICES
+      // ============================================================
+
+      List devices = [];
+
+      if (data["devices"] is List) {
+        devices = List.from(data["devices"]);
+      }
+
+      // ============================================================
+      // CLEAN DEVICES
+      // ============================================================
+
+      devices = devices
+          .where((d) => d is Map)
+          .map((d) => Map<String, dynamic>.from(d))
+          .toList();
+
+      // ============================================================
+      // CHECK CURRENT DEVICE
+      // ============================================================
+
+      final exists = devices.any((d) => d["deviceId"] == deviceId);
+
+      final maxDevices = (data["maxDevices"] ?? 1) as int;
+
+      // ============================================================
+      // REGISTER NEW DEVICE
+      // ============================================================
+
+      if (!exists) {
+        if (devices.length >= maxDevices) {
+          _stopLoading();
+
+          _showMessage("Too many devices logged in");
+
+          return;
+        }
+
+        devices.add({
+          "deviceId": deviceId,
+          "deviceName": "Flutter Windows",
+          "loginTime": DateTime.now().toIso8601String(),
+        });
+
+        await docRef.update({"devices": devices});
+      }
+
+      // ============================================================
+      // ROLE
+      // ============================================================
+
+      final role = data["role"] ?? (isStore ? "store" : "pharmacy");
+
+      // ============================================================
+      // SAVE LOGIN
+      // ============================================================
+
+      await prefs.setString("username", username);
+
+      await prefs.setString("role", role);
+
+      // مهم جداً:
+      // نحفظ document ID
+      //
+      // مثال:
+      // username = Sahara
+      // storeCode = M001
+
+      if (isStore || role == "store") {
+        await prefs.setString("storeCode", firestoreDocumentId);
+      } else {
+        await prefs.setString("storeCode", username);
+      }
+
+      _stopLoading();
+
+      // ============================================================
+      // STORE
+      // ============================================================
+
+      if (isStore || role == "store") {
+        debugPrint("OPENING STORE INVENTORY");
+
+        debugPrint("STORE CODE = $firestoreDocumentId");
+
+        debugPrint(
+          "INVENTORY PATH = "
+          "stores/$firestoreDocumentId/inventory",
+        );
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StoreInventoryScreen(
+              storeCode: firestoreDocumentId,
+              expireDate: expireDate,
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      // ============================================================
+      // PHARMACY
+      // ============================================================
+
+      debugPrint("OPENING PHARMACY MENU");
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MainMenuScreen(
+            storeCode: username,
+            expireDate: expireDate,
+            role: role,
+          ),
+        ),
+      );
+    } catch (e, stackTrace) {
+      debugPrint("LOGIN ERROR: $e");
+
+      debugPrint(stackTrace.toString());
+
+      _stopLoading();
+
+      _showMessage(e.toString());
+    }
+  }
+
+  // ================================================================
+  // STOP LOADING
+  // ================================================================
+
+  void _stopLoading() {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  // ================================================================
+  // SHOW MESSAGE
+  // ================================================================
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ================================================================
+  // CHECK LOGIN
+  // ================================================================
+
   Future<void> checkLogin() async {
     if (isCheckingLogin) return;
 
     isCheckingLogin = true;
 
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    final savedUser = prefs.getString("username");
+      final savedUser = prefs.getString("username");
 
-    // لا تدخل تلقائي حاليا
-    // خلي المستخدم يعمل Login كل مرة
+      debugPrint("Saved username: $savedUser");
 
-    isCheckingLogin = false;
+      // لا ندخل تلقائياً حالياً.
+      // المستخدم يعمل Login كل مرة.
+    } finally {
+      isCheckingLogin = false;
+    }
   }
+
+  // ================================================================
+  // GET DEVICE ID
+  // ================================================================
 
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
 
-    String? deviceId = prefs.getString("deviceId");
+    String deviceId = prefs.getString("deviceId") ?? "";
 
-    if (deviceId == null || deviceId.isEmpty) {
-      deviceId = prefs.getString("deviceId") ?? "";
+    if (deviceId.isEmpty) {
+      deviceId = DateTime.now().microsecondsSinceEpoch.toString();
 
-      if (deviceId.isEmpty) {
-        deviceId = UniqueKey().toString();
-        await prefs.setString("deviceId", deviceId);
-      }
       await prefs.setString("deviceId", deviceId);
     }
 
     return deviceId;
   }
 
-  Future<void> registerDevice({
+  // ================================================================
+  // REGISTER DEVICE
+  // ================================================================
+
+  Future<bool> registerDevice({
     required String deviceId,
     required String deviceName,
     required List devices,
     required int maxDevices,
     required DocumentReference docRef,
-    required Function(String) show,
-    required VoidCallback stopLoading,
   }) async {
-    bool alreadyExists = devices.any((d) => d["deviceId"] == deviceId);
+    final alreadyExists = devices.any(
+      (d) => d is Map && d["deviceId"] == deviceId,
+    );
 
-    if (!alreadyExists) {
-      if (devices.length >= maxDevices) {
-        stopLoading();
-        show("Too many devices logged in");
-        return;
-      }
-
-      devices.add({
-        "deviceId": deviceId,
-        "deviceName": deviceName,
-        "loginTime": DateTime.now().toIso8601String(),
-      });
-
-      await docRef.update({"devices": devices});
+    if (alreadyExists) {
+      return true;
     }
+
+    if (devices.length >= maxDevices) {
+      return false;
+    }
+
+    devices.add({
+      "deviceId": deviceId,
+      "deviceName": deviceName,
+      "loginTime": DateTime.now().toIso8601String(),
+    });
+
+    await docRef.update({"devices": devices});
+
+    return true;
   }
 }
