@@ -8,6 +8,7 @@ import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'Homescreen.dart';
 import 'history_screen.dart';
@@ -56,6 +57,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   String? selectedWarehouseId;
 
+  Map<String, dynamic>? selectedWarehouse;
+
   bool loadingWarehouses = false;
 
   // ==========================
@@ -90,6 +93,13 @@ class _OrderScreenState extends State<OrderScreen> {
   // ==========================
   // Load Warehouses
   // ==========================
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   Future loadWarehouses() async {
     if (!mounted) return;
@@ -116,16 +126,16 @@ class _OrderScreenState extends State<OrderScreen> {
       for (final doc in snap.docs) {
         final data = doc.data();
 
-
         final name = data["name"]?.toString().trim() ?? "";
 
         loadedWarehouses.add({
           "id": doc.id,
           "name": name.isNotEmpty ? name : doc.id,
+          "whatsapp": data["whatsapp"]?.toString().trim() ?? "",
+          "phone": data["phone"]?.toString().trim() ?? "",
+          "address": data["address"]?.toString().trim() ?? "",
         });
       }
-
-
 
       if (!mounted) return;
 
@@ -136,14 +146,43 @@ class _OrderScreenState extends State<OrderScreen> {
         statusText = loadedWarehouses.isEmpty ? "No warehouses found." : "";
       });
     } catch (e, stackTrace) {
-
-
       if (!mounted) return;
 
       setState(() {
         loadingWarehouses = false;
         statusText = "Failed to load warehouses:\n$e";
       });
+    }
+  }
+
+  // ==========================
+  // Open Warehouse WhatsApp
+  // ==========================
+
+  Future<void> openWarehouseWhatsApp() async {
+    final whatsapp = selectedWarehouse?["whatsapp"]?.toString().trim() ?? "";
+
+    if (whatsapp.isEmpty) {
+      if (!mounted) return;
+      _showMessage("WhatsApp number is not available for this warehouse.");
+      return;
+    }
+
+    final cleanNumber = whatsapp.replaceAll(RegExp(r"[^0-9]"), "");
+    final uri = Uri.parse("https://wa.me/$cleanNumber");
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched && mounted) {
+        _showMessage("Could not open WhatsApp.");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage("Could not open WhatsApp: $e");
     }
   }
 
@@ -1084,8 +1123,14 @@ class _OrderScreenState extends State<OrderScreen> {
                                         return;
                                       }
 
+                                      final warehouse = warehouses.firstWhere(
+                                        (w) => w["id"].toString() == value,
+                                        orElse: () => <String, dynamic>{},
+                                      );
+
                                       setState(() {
                                         selectedWarehouseId = value;
+                                        selectedWarehouse = warehouse;
 
                                         orderRows.clear();
 
@@ -1138,20 +1183,189 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                     );
 
+                    final warehouseInfoCard = selectedWarehouse != null
+                        ? Card(
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Warehouse Information",
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xff0050c0),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 9),
+
+                                  _buildWarehouseInfoRow(
+                                    Icons.warehouse,
+                                    "Name",
+                                    selectedWarehouse!["name"]?.toString() ??
+                                        "-",
+                                  ),
+
+                                  const SizedBox(height: 6),
+
+                                  _buildWarehouseInfoRow(
+                                    Icons.tag,
+                                    "Store Code",
+                                    selectedWarehouse!["id"]?.toString() ?? "-",
+                                  ),
+
+                                  if ((selectedWarehouse!["phone"]
+                                              ?.toString() ??
+                                          "")
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+
+                                    _buildWarehouseInfoRow(
+                                      Icons.phone,
+                                      "Phone",
+                                      selectedWarehouse!["phone"].toString(),
+                                    ),
+                                  ],
+
+                                  const SizedBox(height: 6),
+
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.chat,
+                                        color: Colors.green,
+                                        size: 19,
+                                      ),
+
+                                      const SizedBox(width: 7),
+
+                                      const Text(
+                                        "WhatsApp",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+
+                                      const SizedBox(width: 7),
+
+                                      Expanded(
+                                        child: Text(
+                                          (selectedWarehouse!["whatsapp"]
+                                                          ?.toString() ??
+                                                      "")
+                                                  .isNotEmpty
+                                              ? selectedWarehouse!["whatsapp"]
+                                                    .toString()
+                                              : "Not available",
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+
+                                      if ((selectedWarehouse!["whatsapp"]
+                                                  ?.toString() ??
+                                              "")
+                                          .isNotEmpty)
+                                        SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            tooltip: "Open WhatsApp",
+                                            onPressed: openWarehouseWhatsApp,
+                                            icon: const Icon(
+                                              Icons.open_in_new,
+                                              color: Colors.green,
+                                              size: 19,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+
+                                  if ((selectedWarehouse!["address"]
+                                              ?.toString() ??
+                                          "")
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+
+                                    _buildWarehouseInfoRow(
+                                      Icons.location_on,
+                                      "Address",
+                                      selectedWarehouse!["address"].toString(),
+                                    ),
+                                  ],
+
+                                  if ((selectedWarehouse!["whatsapp"]
+                                              ?.toString() ??
+                                          "")
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: 9),
+
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: 40,
+                                      child: ElevatedButton.icon(
+                                        onPressed: openWarehouseWhatsApp,
+                                        icon: const Icon(Icons.chat, size: 18),
+                                        label: const Text(
+                                          "Contact Warehouse on WhatsApp",
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green,
+                                          foregroundColor: Colors.white,
+                                          padding: EdgeInsets.zero,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink();
+
                     // ==================================================
                     // DESKTOP / LARGE SCREEN
                     // ==================================================
 
                     if (!isSmall) {
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-
+                      return Column(
                         children: [
-                          Expanded(child: uploadCard),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
 
-                          const SizedBox(width: 20),
+                            children: [
+                              Expanded(child: uploadCard),
 
-                          Expanded(child: warehouseCard),
+                              const SizedBox(width: 20),
+
+                              Expanded(child: warehouseCard),
+                            ],
+                          ),
+
+                          if (selectedWarehouse != null) ...[
+                            const SizedBox(height: 20),
+                            warehouseInfoCard,
+                          ],
                         ],
                       );
                     }
@@ -1167,6 +1381,11 @@ class _OrderScreenState extends State<OrderScreen> {
                         const SizedBox(height: 20),
 
                         warehouseCard,
+
+                        if (selectedWarehouse != null) ...[
+                          const SizedBox(height: 20),
+                          warehouseInfoCard,
+                        ],
                       ],
                     );
                   },
@@ -1295,6 +1514,19 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildWarehouseInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: const Color(0xff0050c0), size: 22),
+        const SizedBox(width: 10),
+        Text("$label:", style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(value)),
+      ],
     );
   }
 
