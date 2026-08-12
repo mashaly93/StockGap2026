@@ -16,163 +16,350 @@ class Homescreen extends StatefulWidget {
   State<Homescreen> createState() => _HomescreenState();
 }
 
-class _HomescreenState extends State<Homescreen> {
+class _HomescreenState extends State<Homescreen>
+    with SingleTickerProviderStateMixin {
   final codeController = TextEditingController();
   final passwordController = TextEditingController();
 
+  final FocusNode codeFocusNode = FocusNode();
+  final FocusNode passwordFocusNode = FocusNode();
+
   bool isLoading = false;
   bool isCheckingLogin = false;
+  bool obscurePassword = true;
 
-  @override
-  void dispose() {
-    codeController.dispose();
-    passwordController.dispose();
-    super.dispose();
-  }
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  static const Color primaryColor = Color(0xff0050c0);
 
   @override
   void initState() {
     super.initState();
 
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _animationController.forward();
       checkLogin();
     });
   }
 
   @override
+  void dispose() {
+    _animationController.dispose();
+
+    codeController.dispose();
+    passwordController.dispose();
+
+    codeFocusNode.dispose();
+    passwordFocusNode.dispose();
+
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Container(
-            width: 420,
-            padding: const EdgeInsets.all(24),
-            child: Card(
-              elevation: 8,
-              shadowColor: Colors.black12,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(26),
-                child: Column(
-                  children: [
-                    // ==================================================
-                    // LOGO
-                    // ==================================================
-                    Image.asset('assets/images/back.png', scale: 2.7),
-
-                    const SizedBox(height: 12),
-
-                    const Text(
-                      "Stock Gap Generator",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xff0050c0),
-                      ),
+      backgroundColor: const Color(0xfff4f7fb),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 60,
+                ),
+                child: Center(
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: _buildLoginCard(),
                     ),
-
-                    const SizedBox(height: 25),
-
-                    // ==================================================
-                    // USERNAME
-                    // ==================================================
-                    TextFormField(
-                      controller: codeController,
-                      decoration: InputDecoration(
-                        labelText: 'Pharmacy / Store Code',
-                        prefixIcon: const Icon(Icons.store),
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        focusedBorder: const OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Color(0xff0050c0),
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // ==================================================
-                    // PASSWORD
-                    // ==================================================
-                    TextFormField(
-                      controller: passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock),
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade300),
-                        ),
-                        focusedBorder: const OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: Color(0xff0050c0),
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    // ==================================================
-                    // LOGIN BUTTON
-                    // ==================================================
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: isLoading
-                            ? null
-                            : () async {
-                                await login();
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xff0050c0),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text("Login"),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ================================================================
+  // LOGIN CARD
+  // ================================================================
+
+  Widget _buildLoginCard() {
+    return Container(
+      width: 430,
+      constraints: const BoxConstraints(maxWidth: 430),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 35,
+            offset: const Offset(0, 15),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(32, 28, 32, 30),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildLogo(),
+
+          const SizedBox(height: 12),
+
+          const Text(
+            "Stock Gap Generator",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+              color: Color(0xff172033),
             ),
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            "Sign in to continue",
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+
+          const SizedBox(height: 26),
+
+          _buildUsernameField(),
+
+          const SizedBox(height: 14),
+
+          _buildPasswordField(),
+
+          const SizedBox(height: 22),
+
+          _buildLoginButton(),
+        ],
+      ),
+    );
+  }
+
+  // ================================================================
+  // LOGO
+  // ================================================================
+
+  Widget _buildLogo() {
+    return Container(
+      width: 110,
+      height: 110,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xfff1f6ff),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Image.asset('assets/images/back.png', fit: BoxFit.contain),
+    );
+  }
+
+  // ================================================================
+  // USERNAME
+  // ================================================================
+
+  Widget _buildUsernameField() {
+    return TextFormField(
+      controller: codeController,
+      focusNode: codeFocusNode,
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) {
+        passwordFocusNode.requestFocus();
+      },
+      decoration: _inputDecoration(
+        label: 'Pharmacy / Store Code',
+        hint: 'Enter your code',
+        icon: Icons.store_outlined,
+      ),
+    );
+  }
+
+  // ================================================================
+  // PASSWORD
+  // ================================================================
+
+  Widget _buildPasswordField() {
+    return TextFormField(
+      controller: passwordController,
+      focusNode: passwordFocusNode,
+      obscureText: obscurePassword,
+      textInputAction: TextInputAction.done,
+      onFieldSubmitted: (_) async {
+        if (!isLoading) {
+          await login();
+        }
+      },
+      decoration: _inputDecoration(
+        label: 'Password',
+        hint: 'Enter your password',
+        icon: Icons.lock_outline,
+        suffixIcon: IconButton(
+          tooltip: obscurePassword ? 'Show password' : 'Hide password',
+          splashRadius: 22,
+          icon: Icon(
+            obscurePassword
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+            color: Colors.grey.shade500,
+            size: 21,
+          ),
+          onPressed: () {
+            setState(() {
+              obscurePassword = !obscurePassword;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  // ================================================================
+  // INPUT DECORATION
+  // ================================================================
+
+  InputDecoration _inputDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon, size: 21),
+      suffixIcon: suffixIcon,
+
+      floatingLabelBehavior: FloatingLabelBehavior.auto,
+
+      filled: true,
+      fillColor: const Color(0xfff8faff),
+
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+
+      labelStyle: TextStyle(
+        color: Colors.grey.shade600,
+        fontWeight: FontWeight.w500,
+      ),
+
+      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+
+      prefixIconColor: Colors.grey.shade500,
+
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
+      ),
+
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(color: primaryColor, width: 1.5),
+      ),
+    );
+  }
+
+  // ================================================================
+  // LOGIN BUTTON
+  // ================================================================
+
+  Widget _buildLoginButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: isLoading
+              ? []
+              : [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.22),
+                    blurRadius: 14,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
+        ),
+        child: ElevatedButton(
+          onPressed: isLoading
+              ? null
+              : () async {
+                  await login();
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryColor,
+            disabledBackgroundColor: primaryColor.withOpacity(0.75),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: isLoading
+                ? const SizedBox(
+                    key: ValueKey("loading"),
+                    width: 21,
+                    height: 21,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.3,
+                    ),
+                  )
+                : const Row(
+                    key: ValueKey("login"),
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Login",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(width: 9),
+                      Icon(Icons.arrow_forward_rounded, size: 19),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -185,6 +372,8 @@ class _HomescreenState extends State<Homescreen> {
 
   Future<void> login() async {
     if (isLoading) return;
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
@@ -201,7 +390,7 @@ class _HomescreenState extends State<Homescreen> {
       if (username.isEmpty || password.isEmpty) {
         _stopLoading();
 
-        _showMessage("Enter username and password");
+        _showMessage("Enter username and password", isError: true);
 
         return;
       }
@@ -212,7 +401,6 @@ class _HomescreenState extends State<Homescreen> {
 
       // ============================================================
       // 1. SEARCH USERS
-      //    Pharmacy accounts
       // ============================================================
 
       result = await firestore
@@ -244,7 +432,7 @@ class _HomescreenState extends State<Homescreen> {
       if (result.docs.isEmpty) {
         _stopLoading();
 
-        _showMessage("User not found");
+        _showMessage("User not found", isError: true);
 
         return;
       }
@@ -258,27 +446,6 @@ class _HomescreenState extends State<Homescreen> {
       final data = doc.data();
 
       final docRef = doc.reference;
-
-      // ============================================================
-      // IMPORTANT
-      //
-      // doc.id is the REAL Firestore document ID.
-      //
-      // Example:
-      //
-      // stores
-      //   └── M001
-      //        ├── username: Sahara
-      //        └── inventory
-      //
-      // So we MUST use:
-      //
-      // doc.id = M001
-      //
-      // NOT:
-      //
-      // username = Sahara
-      // ============================================================
 
       final firestoreDocumentId = doc.id;
 
@@ -298,21 +465,19 @@ class _HomescreenState extends State<Homescreen> {
       if (data["password"] != password) {
         _stopLoading();
 
-        _showMessage("Wrong password");
+        _showMessage("Wrong password", isError: true);
 
         return;
       }
 
       // ============================================================
       // ACTIVE
-      //
-      // Stores are currently not checked here.
       // ============================================================
 
       if (!isStore && data["active"] != true) {
         _stopLoading();
 
-        _showMessage("Account disabled");
+        _showMessage("Account disabled", isError: true);
 
         return;
       }
@@ -328,7 +493,7 @@ class _HomescreenState extends State<Homescreen> {
       if (expireDate != null && DateTime.now().isAfter(expireDate.toDate())) {
         _stopLoading();
 
-        _showMessage("Subscription expired");
+        _showMessage("Subscription expired", isError: true);
 
         return;
       }
@@ -382,7 +547,7 @@ class _HomescreenState extends State<Homescreen> {
         if (devices.length >= maxDevices) {
           _stopLoading();
 
-          _showMessage("Too many devices logged in");
+          _showMessage("Too many devices logged in", isError: true);
 
           return;
         }
@@ -410,13 +575,6 @@ class _HomescreenState extends State<Homescreen> {
 
       await prefs.setString("role", role);
 
-      // مهم جداً:
-      // نحفظ document ID
-      //
-      // مثال:
-      // username = Sahara
-      // storeCode = M001
-
       if (isStore || role == "store") {
         await prefs.setString("storeCode", firestoreDocumentId);
       } else {
@@ -443,8 +601,8 @@ class _HomescreenState extends State<Homescreen> {
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => StoreInventoryScreen(
+          _buildPageRoute(
+            StoreInventoryScreen(
               storeCode: firestoreDocumentId,
               expireDate: expireDate,
             ),
@@ -464,8 +622,8 @@ class _HomescreenState extends State<Homescreen> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => MainMenuScreen(
+        _buildPageRoute(
+          MainMenuScreen(
             storeCode: username,
             expireDate: expireDate,
             role: role,
@@ -479,8 +637,38 @@ class _HomescreenState extends State<Homescreen> {
 
       _stopLoading();
 
-      _showMessage(e.toString());
+      _showMessage(e.toString(), isError: true);
     }
+  }
+
+  // ================================================================
+  // MODERN PAGE TRANSITION
+  // ================================================================
+
+  PageRouteBuilder _buildPageRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return page;
+      },
+      transitionDuration: const Duration(milliseconds: 500),
+      reverseTransitionDuration: const Duration(milliseconds: 350),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+
+        final slide =
+            Tween<Offset>(
+              begin: const Offset(0.04, 0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            );
+
+        return FadeTransition(
+          opacity: fade,
+          child: SlideTransition(position: slide, child: child),
+        );
+      },
+    );
   }
 
   // ================================================================
@@ -496,15 +684,72 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   // ================================================================
-  // SHOW MESSAGE
+  // MODERN SNACKBAR
   // ================================================================
 
-  void _showMessage(String message) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger.hideCurrentSnackBar();
+
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        duration: const Duration(seconds: 3),
+        padding: EdgeInsets.zero,
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            color: isError ? const Color(0xff20242b) : const Color(0xff173d2b),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: isError
+                      ? Colors.red.withOpacity(0.15)
+                      : Colors.green.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isError
+                      ? Icons.error_outline_rounded
+                      : Icons.check_circle_outline_rounded,
+                  color: isError ? Colors.red.shade300 : Colors.green.shade300,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ================================================================

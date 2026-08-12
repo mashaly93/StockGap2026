@@ -1153,7 +1153,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(10),
-
       ),
       child: Row(
         children: [

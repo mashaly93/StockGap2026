@@ -22,12 +22,14 @@ class DrugDetailsScreen extends StatefulWidget {
 
 class WarehouseResult {
   final String storeCode;
+  final String warehouseName;
   final String itemName;
   final double price;
   final double matchPercent;
 
   WarehouseResult({
     required this.storeCode,
+    required this.warehouseName,
     required this.itemName,
     required this.price,
     required this.matchPercent,
@@ -85,6 +87,10 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
     loadAlternatives();
   }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
@@ -169,7 +175,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       'kg',
       'ml',
       'l',
-
       'new',
       'offer',
       'free',
@@ -240,10 +245,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       return 0;
     }
 
-    // ========================================================
-    // FIRST WORD
-    // ========================================================
-
     final double firstWordScore = simpleWordSimilarity(
       drugWords.first,
       storeWords.first,
@@ -252,10 +253,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
     if (firstWordScore < 60) {
       return 0;
     }
-
-    // ========================================================
-    // MATCH WORDS
-    // ========================================================
 
     int matchedWords = 0;
 
@@ -296,15 +293,7 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       return 0;
     }
 
-    // ========================================================
-    // WORD SCORE
-    // ========================================================
-
     final double wordScore = fuzzyTotal / drugWords.length;
-
-    // ========================================================
-    // NUMBERS
-    // ========================================================
 
     final Set<String> drugNumbers = warehouseNumbers(drugName);
 
@@ -326,10 +315,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       numberScore = 100;
     }
 
-    // ========================================================
-    // FINAL SCORE
-    // ========================================================
-
     double finalScore = (wordScore * 0.75) + (numberScore * 0.25);
 
     if (finalScore > 100) {
@@ -341,6 +326,35 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
     }
 
     return finalScore;
+  }
+
+  // ============================================================
+  // GET WAREHOUSE NAME
+  // ============================================================
+
+  String getWarehouseName(Map<String, dynamic>? data, String storeCode) {
+    if (data != null) {
+      final dynamic name = data['name'];
+
+      if (name != null && name.toString().trim().isNotEmpty) {
+        return name.toString().trim();
+      }
+
+      final dynamic username = data['username'];
+
+      if (username != null && username.toString().trim().isNotEmpty) {
+        return username.toString().trim();
+      }
+
+      final dynamic storeName = data['storeName'];
+
+      if (storeName != null && storeName.toString().trim().isNotEmpty) {
+        return storeName.toString().trim();
+      }
+    }
+
+    // Fallback
+    return storeCode;
   }
 
   // ============================================================
@@ -377,7 +391,24 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       try {
         debugPrint('');
         debugPrint('-----------------------------------------------');
-        debugPrint('STORE = $storeCode');
+        debugPrint('STORE CODE = $storeCode');
+
+        // ====================================================
+        // GET WAREHOUSE DOCUMENT
+        // ====================================================
+
+        final DocumentSnapshot<Map<String, dynamic>> storeSnapshot =
+            await firestore.collection('stores').doc(storeCode).get();
+
+        final Map<String, dynamic>? storeData = storeSnapshot.data();
+
+        final String warehouseName = getWarehouseName(storeData, storeCode);
+
+        debugPrint('WAREHOUSE NAME = $warehouseName');
+
+        // ====================================================
+        // GET INVENTORY
+        // ====================================================
 
         final QuerySnapshot<Map<String, dynamic>> snapshot = await firestore
             .collection('stores')
@@ -418,6 +449,7 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
             bestResult = WarehouseResult(
               storeCode: storeCode,
+              warehouseName: warehouseName,
               itemName: itemName,
               price: getPrice(data),
               matchPercent: score,
@@ -432,13 +464,13 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
         if (bestResult != null) {
           found.add(bestResult);
 
-          debugPrint('BEST MATCH $storeCode:');
+          debugPrint('BEST MATCH $warehouseName:');
 
           debugPrint(bestResult.itemName);
 
           debugPrint('${bestResult.matchPercent}%');
         } else {
-          debugPrint('NO MATCH >= 60% IN $storeCode');
+          debugPrint('NO MATCH >= 60% IN $warehouseName');
         }
       } catch (e) {
         debugPrint('ERROR STORE $storeCode: $e');
@@ -457,9 +489,7 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
     setState(() {
       warehouseResults = found;
-
       searchingWarehouses = false;
-
       warehouseSearchDone = true;
     });
 
@@ -568,9 +598,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
   // ============================================================
   // ADD DRUG TO ORDER
-  //
-  // يتم حفظه في SharedPreferences
-  // حتى يستطيع OrderScreen قراءته
   // ============================================================
 
   Future<void> addDrugToOrder(WarehouseResult result) async {
@@ -591,24 +618,34 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
           prefs.getStringList('drug_details_order_items') ?? [];
 
       final Map<String, dynamic> newItem = {
+        // Drug
         'item': widget.drug.tradeName,
 
+        // Quantity
         'qty': quantity,
 
+        // IMPORTANT:
+        // Keep store code internally
         'warehouse': result.storeCode,
 
+        // Warehouse display name
+        'warehouseName': result.warehouseName,
+
+        // Matched item
         'matchedItem': result.itemName,
 
+        // Match
         'matchPercent': result.matchPercent,
 
+        // Prices
         'purchase': result.price,
-
         'sale': result.price,
 
+        // Drug information
         'registration': widget.drug.registration,
-
         'manufacturer': widget.drug.manufacturer,
 
+        // Date
         'addedAt': DateTime.now().toIso8601String(),
       };
 
@@ -631,6 +668,9 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
                 int.tryParse(oldItem['qty']?.toString() ?? '') ?? 0;
 
             oldItem['qty'] = oldQty + quantity;
+
+            // Update warehouse name
+            oldItem['warehouseName'] = result.warehouseName;
 
             savedItems[i] = jsonEncode(oldItem);
 
@@ -761,7 +801,9 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
                         Icons.production_quantity_limits,
                         color: Color(0xff0050c0),
                       ),
+
                       SizedBox(width: 8),
+
                       Text(
                         'Quantity',
                         style: TextStyle(
@@ -826,8 +868,11 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xff0050c0),
+
                 foregroundColor: Colors.white,
+
                 padding: const EdgeInsets.symmetric(vertical: 14),
+
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -897,22 +942,36 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
 
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
 
           children: [
+            // ==================================================
+            // HEADER
+            // ==================================================
             Row(
               children: [
-                const Icon(Icons.warehouse, color: Color(0xff0050c0)),
+                Container(
+                  width: 40,
+                  height: 40,
 
-                const SizedBox(width: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff0050c0).withOpacity(0.10),
+
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+
+                  child: const Icon(Icons.warehouse, color: Color(0xff0050c0)),
+                ),
+
+                const SizedBox(width: 10),
 
                 const Expanded(
                   child: Text(
                     'Available in Warehouses',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
 
@@ -924,7 +983,7 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
                     ),
 
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.12),
+                      color: Colors.green.withOpacity(0.10),
                       borderRadius: BorderRadius.circular(20),
                     ),
 
@@ -939,8 +998,11 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
+            // ==================================================
+            // NO RESULTS
+            // ==================================================
             if (warehouseResults.isEmpty)
               Container(
                 width: double.infinity,
@@ -949,6 +1011,7 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
                 decoration: BoxDecoration(
                   color: Colors.red.withOpacity(0.08),
+
                   borderRadius: BorderRadius.circular(10),
                 ),
 
@@ -971,7 +1034,40 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
                 ),
               )
             else
-              ...warehouseResults.map(buildWarehouseCard),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final double width = constraints.maxWidth;
+
+                  int columns;
+
+                  if (width >= 1100) {
+                    columns = 4;
+                  } else if (width >= 800) {
+                    columns = 3;
+                  } else if (width >= 520) {
+                    columns = 2;
+                  } else {
+                    columns = 1;
+                  }
+
+                  const double spacing = 10;
+
+                  final double cardWidth =
+                      (width - ((columns - 1) * spacing)) / columns;
+
+                  return Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+
+                    children: warehouseResults.map((result) {
+                      return SizedBox(
+                        width: cardWidth,
+                        child: buildWarehouseCard(result),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -986,85 +1082,82 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
     final int quantity = getQuantity();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-
       padding: const EdgeInsets.all(12),
 
       decoration: BoxDecoration(
+        color: Colors.white,
+
         border: Border.all(color: Colors.grey.shade300),
+
         borderRadius: BorderRadius.circular(12),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+
+            blurRadius: 5,
+
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
 
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
+          // ==================================================
+          // TOP
+          // ==================================================
           Row(
             children: [
               Container(
-                width: 45,
-                height: 45,
+                width: 42,
+                height: 42,
 
                 decoration: BoxDecoration(
                   color: const Color(0xff0050c0).withOpacity(0.10),
+
                   borderRadius: BorderRadius.circular(10),
                 ),
 
-                child: const Icon(Icons.warehouse, color: Color(0xff0050c0)),
-              ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Warehouse ${result.storeCode}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      result.itemName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      '${result.price.toStringAsFixed(3)} OMR',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
+                child: const Icon(
+                  Icons.warehouse,
+                  color: Color(0xff0050c0),
+                  size: 21,
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
 
+              Expanded(
+                child: Text(
+                  result.warehouseName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+
+              // ==================================================
+              // MATCH %
+              // ==================================================
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
 
                 decoration: BoxDecoration(
                   color: Colors.green.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(8),
+
+                  borderRadius: BorderRadius.circular(7),
                 ),
 
                 child: Text(
                   '${result.matchPercent.toStringAsFixed(0)}%',
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: Colors.green,
                   ),
@@ -1076,11 +1169,54 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
           const SizedBox(height: 10),
 
           // ==================================================
-          // ADD TO ORDER
+          // ITEM
+          // ==================================================
+          Text(
+            result.itemName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade700,
+              height: 1.3,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // ==================================================
+          // PRICE
+          // ==================================================
+          Row(
+            children: [
+              const Icon(
+                Icons.payments_outlined,
+                size: 17,
+                color: Colors.green,
+              ),
+
+              const SizedBox(width: 5),
+
+              Text(
+                '${result.price.toStringAsFixed(3)} OMR',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          // ==================================================
+          // ADD BUTTON
           // ==================================================
           SizedBox(
             width: double.infinity,
-            height: 42,
+
+            height: 40,
 
             child: ElevatedButton.icon(
               onPressed: quantity > 0
@@ -1089,18 +1225,23 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
                     }
                   : null,
 
-              icon: const Icon(Icons.add_shopping_cart, size: 18),
+              icon: const Icon(Icons.add_shopping_cart, size: 17),
 
-              label: Text(
-                quantity > 0
-                    ? 'Add $quantity to Drug Details Order'
-                    : 'Enter Quantity First',
-              ),
+              label: Text(quantity > 0 ? 'Add $quantity' : 'Enter Quantity'),
 
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
+
                 foregroundColor: Colors.white,
+
                 disabledBackgroundColor: Colors.grey.shade400,
+
+                disabledForegroundColor: Colors.white,
+
+                elevation: 0,
+
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(9),
                 ),
@@ -1127,7 +1268,6 @@ class _DrugDetailsScreenState extends State<DrugDetailsScreen> {
 
         subtitle: Text(
           value,
-
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
