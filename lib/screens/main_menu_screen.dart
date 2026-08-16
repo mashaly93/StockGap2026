@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'Homescreen.dart';
 import 'OrderScreen.dart';
 import 'drug_search_screen.dart';
+import 'import_drug_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   final String storeCode;
@@ -198,7 +199,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-
+              color: const Color(0xfff7f9fc),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -329,6 +330,10 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     // ==============================================================
 
     if (!isStore) {
+      // ------------------------------------------------------------
+      // GENERATE ORDER
+      // ------------------------------------------------------------
+
       cards.add(
         MenuCard(
           title: "Generate Order",
@@ -351,6 +356,10 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         ),
       );
 
+      // ------------------------------------------------------------
+      // DRUG EYE
+      // ------------------------------------------------------------
+
       cards.add(
         MenuCard(
           title: "Drug Eye",
@@ -361,6 +370,24 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           animation: _animationController,
           onTap: () {
             Navigator.push(context, _buildPageRoute(const DrugSearchScreen()));
+          },
+        ),
+      );
+
+      // ------------------------------------------------------------
+      // MINISTRY OF HEALTH LIST
+      // ------------------------------------------------------------
+
+      cards.add(
+        MenuCard(
+          title: "Ministry List",
+          description: "Upload Ministry of Health drug list",
+          icon: Icons.upload_file_rounded,
+          color: const Color(0xff7b61ff),
+          index: 2,
+          animation: _animationController,
+          onTap: () {
+            Navigator.push(context, _buildPageRoute(const ImportDrugScreen()));
           },
         ),
       );
@@ -581,9 +608,7 @@ class _MenuCardState extends State<MenuCard> {
                             color: Color(0xff172033),
                           ),
                         ),
-
                         const SizedBox(height: 6),
-
                         Text(
                           widget.description,
                           maxLines: 2,
