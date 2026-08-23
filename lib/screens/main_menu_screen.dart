@@ -378,19 +378,21 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       // MINISTRY OF HEALTH LIST
       // ------------------------------------------------------------
 
-      cards.add(
-        MenuCard(
-          title: "Ministry List",
-          description: "Upload Ministry of Health drug list",
-          icon: Icons.upload_file_rounded,
-          color: const Color(0xff7b61ff),
-          index: 2,
-          animation: _animationController,
-          onTap: () {
-            Navigator.push(context, _buildPageRoute(const ImportDrugScreen()));
-          },
-        ),
-      );
+      /*
+cards.add(
+  MenuCard(
+    title: "Ministry List",
+    description: "Upload Ministry of Health drug list",
+    icon: Icons.upload_file_rounded,
+    color: const Color(0xff7b61ff),
+    index: 2,
+    animation: _animationController,
+    onTap: () {
+      Navigator.push(context, _buildPageRoute(const ImportDrugScreen()));
+    },
+  ),
+);
+*/
     }
 
     // ==============================================================
