@@ -1,910 +1,3125 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
+
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'Homescreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'Homescreen.dart';
 import 'history_screen.dart';
-import '../matcher/matcher.dart';
 
 class OrderScreen extends StatefulWidget {
   static const routeName = "orderScreen";
+
   final String storeCode;
   final Timestamp? expireDate;
 
-  const OrderScreen({
-    super.key,
-    required this.storeCode,
-    this.expireDate,
-  });
+  const OrderScreen({super.key, required this.storeCode, this.expireDate});
 
   @override
   State<OrderScreen> createState() => _OrderScreenState();
 }
 
 class _OrderScreenState extends State<OrderScreen> {
-  late final storeCode = widget.storeCode;
+  // ============================================================
+  // COLORS
+  // ============================================================
+
+  static const Color primary = Color(0xff0050C0);
+  static const Color primaryDark = Color(0xff123F7A);
+  static const Color background = Color(0xffF5F7FB);
+  static const Color surface = Colors.white;
+  static const Color textDark = Color(0xff172033);
+  static const Color textMuted = Color(0xff6B7280);
+  static const Color success = Color(0xff16A34A);
+  static const Color danger = Color(0xffDC2626);
+
+  static const double cardRadius = 15;
+
+  late final String storeCode = widget.storeCode;
+
+  // ============================================================
+  // PHARMACY MISSING ITEMS
+  // ============================================================
+
   List<List<String>> inventoryRows = [];
+
+  // ============================================================
+  // WAREHOUSE INVENTORY
+  // ============================================================
+
   List<List<String>> orderRows = [];
-  List<String> orders = [];
+
+  // ============================================================
+  // GENERATED FILE
+  // ============================================================
+
   Uint8List? generatedFileBytes;
+
   bool isGenerating = false;
+
   String? inventoryFileName;
-  String? orderFileName;
 
   String statusText = "";
 
-  List<List<String>> excelToRows(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
+  // ============================================================
+  // WAREHOUSES
+  // ============================================================
 
-    if (excel.tables.isEmpty) return [];
+  List<Map<String, dynamic>> warehouses = [];
 
-    final table = excel.tables.values.first;
+  String? selectedWarehouseId;
 
-    return table.rows
-        .map((row) => row.map((e) => e?.value.toString() ?? "").toList())
-        .toList();
+  Map<String, dynamic>? selectedWarehouse;
+
+  bool loadingWarehouses = false;
+
+  // ============================================================
+  // SEARCH RESULTS
+  // ============================================================
+
+  List<Map<String, dynamic>> warehouseSearchResults = [];
+
+  bool searchingWarehouse = false;
+
+  // ============================================================
+  // SELECTED MATCHING ITEMS
+  // ============================================================
+
+  final List<Map<String, dynamic>> selectedItems = [];
+
+  // ============================================================
+  // DRUG DETAILS ITEMS
+  // ============================================================
+
+  List<Map<String, dynamic>> drugDetailsItems = [];
+
+  bool loadingDrugDetailsItems = false;
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadWarehouses();
+    loadDrugDetailsItems();
   }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+  }
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('username');
+
+    await prefs.remove("username");
 
     if (!mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => Homescreen()),
-          (route) => false,
+      (route) => false,
     );
   }
 
-  Future<List<List<String>>> processFile(File file) async {
-    final path = file.path.toLowerCase();
+  // ============================================================
+  // LOAD WAREHOUSES
+  // ============================================================
 
-    if (path.endsWith(".xlsx")) {
-      final bytes = await file.readAsBytes();
-      return excelToRows(bytes);
-    }
-
-    if (path.endsWith(".pdf")) {
-      final csv = await convertPdfToCsv(file);
-      return await csvToRows(csv);
-    }
-
-    throw Exception("Only Excel or PDF files are supported.");
-  }
-
-  Future<void> pickInventory() async {
-    try {
-      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
-
-      final xfile = await openFile(acceptedTypeGroups: [type]);
-
-      if (xfile == null) return;
-
-      inventoryRows = await processFile(File(xfile.path));
-      inventoryFileName = xfile.name;
-
-      setState(() {
-        statusText = "Missing Items Loaded Successfully";
-      });
-    } catch (e) {
-      setState(() {
-        statusText = e.toString();
-      });
-    }
-  }
-
-  Future<void> pickOrder() async {
-    try {
-      final type = XTypeGroup(label: "Files", extensions: ["xlsx", "pdf"]);
-
-      final xfile = await openFile(acceptedTypeGroups: [type]);
-
-      if (xfile == null) return;
-
-      orderRows = await processFile(File(xfile.path));
-
-      orderFileName = xfile.name;
-
-      setState(() {
-        statusText = "Store List  Loaded Successfully";
-      });
-    } catch (e) {
-      setState(() {
-        statusText = e.toString();
-      });
-    }
-  }
-
-  Future<void> generateOrder() async {
-    if (inventoryRows.isEmpty || orderRows.isEmpty) {
-      setState(() {
-        statusText = "Please select both files.";
-      });
-      return;
-    }
+  Future<void> loadWarehouses() async {
+    if (!mounted) return;
 
     setState(() {
-      isGenerating = true;
-      statusText = "Processing...";
+      loadingWarehouses = true;
+      statusText = "Loading warehouses...";
     });
-    await Future.delayed(const Duration(milliseconds: 100));
 
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection("stores")
+          .where("role", isEqualTo: "store")
+          .get();
 
+      final loadedWarehouses = <Map<String, dynamic>>[];
 
-    final excel = Excel.createExcel();
+      for (final doc in snap.docs) {
+        final data = doc.data();
 
-    final resultSheet = excel['Sheet1'];
-    final missingSheet = excel['Missing'];
+        final name = data["name"]?.toString().trim() ?? "";
 
+        loadedWarehouses.add({
+          "id": doc.id,
+          "name": name.isNotEmpty ? name : doc.id,
+          "whatsapp": data["whatsapp"]?.toString().trim() ?? "",
+          "phone": data["phone"]?.toString().trim() ?? "",
+          "address": data["address"]?.toString().trim() ?? "",
+        });
+      }
 
-    resultSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-      TextCellValue("Matched Item"),
-      TextCellValue("Purchase Price"),
-      TextCellValue("Sale Price"),
-      TextCellValue("Sale Total"),
-    ]);
+      if (!mounted) return;
 
+      setState(() {
+        warehouses = loadedWarehouses;
+        loadingWarehouses = false;
 
+        statusText = loadedWarehouses.isEmpty ? "No warehouses found." : "";
+      });
+    } catch (e) {
+      if (!mounted) return;
 
+      setState(() {
+        loadingWarehouses = false;
+        statusText = "Failed to load warehouses:\n$e";
+      });
+    }
+  }
 
-    double grandSaleTotal = 0;
+  // ============================================================
+  // LOAD DRUG DETAILS ITEMS
+  // ============================================================
 
+  Future<void> loadDrugDetailsItems() async {
+    if (!mounted) return;
 
-    // استخراج الأسعار
-    List<double> extractPrices(List<String> row) {
+    setState(() {
+      loadingDrugDetailsItems = true;
+    });
 
-      final prices = <double>[];
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
+      final savedItems = prefs.getStringList("drug_details_order_items") ?? [];
 
-      for (final cell in row) {
+      final loadedItems = <Map<String, dynamic>>[];
 
-        final text = cell.trim();
+      for (final item in savedItems) {
+        try {
+          final decoded = jsonDecode(item);
 
-
-        if (text.contains('%')) continue;
-
-
-        final value = double.tryParse(
-          text.replaceAll(',', ''),
-        );
-
-
-        if (value != null &&
-            value > 0 &&
-            value < 100 &&
-            !(
-                prices.isEmpty &&
-                    value == value.roundToDouble()
-            )
-        ) {
-          prices.add(value);
+          if (decoded is Map) {
+            loadedItems.add(Map<String, dynamic>.from(decoded));
+          }
+        } catch (e) {
+          debugPrint("ERROR DECODING DRUG DETAIL ITEM: $e");
         }
       }
 
+      if (!mounted) return;
 
-      return prices;
+      setState(() {
+        drugDetailsItems = loadedItems;
+        loadingDrugDetailsItems = false;
+      });
+
+      debugPrint("DRUG DETAILS ITEMS LOADED = ${loadedItems.length}");
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        drugDetailsItems = [];
+        loadingDrugDetailsItems = false;
+      });
+
+      debugPrint("ERROR LOADING DRUG DETAILS ITEMS: $e");
+    }
+  }
+
+  // ============================================================
+  // DELETE DRUG DETAILS ITEMS
+  // ============================================================
+
+  Future<void> clearDrugDetailsItems() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.remove("drug_details_order_items");
+
+      if (!mounted) return;
+
+      setState(() {
+        drugDetailsItems.clear();
+      });
+
+      _showMessage("Drug Details items cleared.");
+    } catch (e) {
+      _showMessage("Could not clear Drug Details items: $e");
+    }
+  }
+
+  // ============================================================
+  // WHATSAPP
+  // ============================================================
+
+  Future<void> openWarehouseWhatsApp() async {
+    final whatsapp = selectedWarehouse?["whatsapp"]?.toString().trim() ?? "";
+
+    if (whatsapp.isEmpty) {
+      _showMessage("WhatsApp number is not available for this warehouse.");
+      return;
     }
 
+    final cleanNumber = whatsapp.replaceAll(RegExp(r"[^0-9]"), "");
 
+    if (cleanNumber.isEmpty) {
+      _showMessage("Invalid WhatsApp number.");
+      return;
+    }
 
-    // دمج الأصناف المتكررة في Missing Items
-    final Map<String, Map<String, dynamic>> mergedItems = {};
+    final uri = Uri.parse("https://wa.me/$cleanNumber");
 
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched && mounted) {
+        _showMessage("Could not open WhatsApp.");
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage("Could not open WhatsApp: $e");
+    }
+  }
+
+  // ============================================================
+  // LOAD WAREHOUSE INVENTORY
+  // ============================================================
+
+  Future<void> loadWarehouseItems(String warehouseId) async {
+    if (!mounted) return;
+
+    setState(() {
+      orderRows.clear();
+      warehouseSearchResults.clear();
+      selectedItems.clear();
+      statusText = "Loading warehouse inventory...";
+    });
+
+    try {
+      final inventoryRef = FirebaseFirestore.instance
+          .collection("stores")
+          .doc(warehouseId)
+          .collection("inventory");
+
+      final snap = await inventoryRef.get();
+
+      final loadedRows = <List<String>>[];
+
+      for (final doc in snap.docs) {
+        final data = doc.data();
+
+        final name = data["name"]?.toString().trim() ?? "";
+
+        if (name.isEmpty) {
+          continue;
+        }
+
+        double price = 0;
+
+        final rawPrice = data["price"];
+
+        if (rawPrice is num) {
+          price = rawPrice.toDouble();
+        } else {
+          price =
+              double.tryParse(
+                rawPrice?.toString().replaceAll(",", "").trim() ?? "",
+              ) ??
+              0;
+        }
+
+        loadedRows.add([name, "0", price.toString(), price.toString()]);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        orderRows = loadedRows;
+
+        statusText = "${orderRows.length} warehouse items loaded ✔";
+      });
+
+      if (inventoryRows.isNotEmpty && orderRows.isNotEmpty) {
+        searchAllMissingItems();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        orderRows.clear();
+
+        statusText = "Failed to load warehouse inventory:\n$e";
+      });
+    }
+  }
+
+  // ============================================================
+  // EXCEL READER
+  // ============================================================
+
+  List<List<String>> excelToRows(Uint8List bytes) {
+    final excel = Excel.decodeBytes(bytes);
+
+    if (excel.tables.isEmpty) {
+      return [];
+    }
+
+    final table = excel.tables.values.first;
+
+    return table.rows.map((row) {
+      return row.map((cell) {
+        return cell?.value.toString().trim() ?? "";
+      }).toList();
+    }).toList();
+  }
+
+  // ============================================================
+  // PICK INVENTORY
+  // ============================================================
+
+  Future<void> pickInventory() async {
+    try {
+      final type = XTypeGroup(label: "Excel", extensions: ["xlsx"]);
+
+      final file = await openFile(acceptedTypeGroups: [type]);
+
+      if (file == null) return;
+
+      final bytes = await File(file.path).readAsBytes();
+
+      final rows = excelToRows(bytes);
+
+      if (rows.length <= 1) {
+        throw Exception("Excel file is empty.");
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        inventoryRows = rows;
+
+        inventoryFileName = file.name;
+
+        generatedFileBytes = null;
+
+        warehouseSearchResults.clear();
+
+        selectedItems.clear();
+
+        statusText = "Missing Items Loaded Successfully ✔";
+      });
+
+      if (orderRows.isNotEmpty) {
+        searchAllMissingItems();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        statusText = "Failed to read Excel:\n$e";
+      });
+    }
+  }
+
+  // ============================================================
+  // FIND QTY COLUMN
+  // ============================================================
+
+  int findQtyColumn(List<String> header) {
+    for (int i = 0; i < header.length; i++) {
+      final value = header[i]
+          .trim()
+          .toLowerCase()
+          .replaceAll("_", " ")
+          .replaceAll("-", " ");
+
+      if (value == "qty" ||
+          value == "quantity" ||
+          value == "quantities" ||
+          value == "required qty" ||
+          value == "required quantity" ||
+          value == "order qty" ||
+          value == "order quantity") {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
+  // ============================================================
+  // MERGE MISSING ITEMS
+  // ============================================================
+
+  Map<String, Map<String, dynamic>> buildMergedMissingItems() {
+    final Map<String, Map<String, dynamic>> merged = {};
+
+    if (inventoryRows.isEmpty) {
+      return merged;
+    }
+
+    final header = inventoryRows.first;
+
+    final qtyColumnIndex = findQtyColumn(header);
 
     for (int i = 1; i < inventoryRows.length; i++) {
+      final row = inventoryRows[i];
 
-
-      final missingRow = inventoryRows[i];
-
-
-      if (missingRow.isEmpty) continue;
-
-
+      if (row.isEmpty) {
+        continue;
+      }
 
       String item = "";
 
       int qty = 0;
 
+      if (qtyColumnIndex >= 0 && qtyColumnIndex < row.length) {
+        final qtyText = row[qtyColumnIndex].replaceAll(",", "").trim();
 
+        qty = int.tryParse(qtyText) ?? 0;
 
-      // استخراج الاسم والكمية
-      for (final cell in missingRow) {
+        final itemParts = <String>[];
 
+        for (int x = 0; x < row.length; x++) {
+          if (x == qtyColumnIndex) {
+            continue;
+          }
 
-        if (RegExp(r'^\d+$').hasMatch(cell.trim())) {
+          final value = row[x].trim();
 
+          if (value.isEmpty) {
+            continue;
+          }
 
-          qty = int.tryParse(cell.trim()) ?? 0;
-
-          break;
-
+          itemParts.add(value);
         }
 
+        item = itemParts.join(" ").trim();
+      } else if (row.length >= 2) {
+        item = row[0].trim();
 
-        item += "$cell ";
+        final qtyText = row[1].replaceAll(",", "").trim();
 
+        qty = int.tryParse(qtyText) ?? 0;
       }
 
+      if (item.isEmpty) {
+        continue;
+      }
 
+      final key = normalizeForSearch(item);
 
-      item = item.trim();
-
-
-
-      if (item.isEmpty) continue;
-
-
-
-      final key = Matcher.normalize(item);
-
-
-
-      // تجميع الكمية لو الصنف مكرر
-      if (mergedItems.containsKey(key)) {
-
-
-        mergedItems[key]!["qty"] += qty;
-
-
+      if (merged.containsKey(key)) {
+        merged[key]!["qty"] = (merged[key]!["qty"] as int) + qty;
       } else {
-
-
-        mergedItems[key] = {
-
-          "item": item,
-
-          "qty": qty,
-
-        };
-
+        merged[key] = {"item": item, "qty": qty};
       }
-
     }
 
+    return merged;
+  }
 
+  // ============================================================
+  // NORMALIZE
+  // ============================================================
 
-// البحث بعد دمج الأصناف
-    final similarItems = <Map<String, dynamic>>[];
-    final lowSimilarItems = <Map<String, dynamic>>[];
+  String normalizeForSearch(String text) {
+    String value = text.toLowerCase().trim();
 
-    for (final data in mergedItems.values) {
-      final item = data["item"] as String;
+    value = value.replaceAll(RegExp(r'[-_/\\.,()\[\]{}]+'), ' ');
+
+    value = value.replaceAll(RegExp(r'\s+'), ' ');
+
+    value = value.replaceAll(RegExp(r'\btablets?\b'), 'tab');
+
+    value = value.replaceAll(RegExp(r'\bcapsules?\b'), 'cap');
+
+    value = value.replaceAll(RegExp(r'\btab(s)?\b'), 'tab');
+
+    value = value.replaceAll(RegExp(r'\bcap(s)?\b'), 'cap');
+
+    value = value.replaceAll(RegExp(r'\bampoules?\b'), 'amp');
+
+    value = value.replaceAll(RegExp(r'\binjections?\b'), 'inj');
+
+    return value.trim();
+  }
+
+  // ============================================================
+  // WORD SIMILARITY
+  // ============================================================
+
+  double wordSimilaritySimple(String a, String b) {
+    if (a == b) {
+      return 100;
+    }
+
+    if (a.isEmpty || b.isEmpty) {
+      return 0;
+    }
+
+    final len = a.length > b.length ? a.length : b.length;
+
+    int distance = 0;
+
+    for (int i = 0; i < len; i++) {
+      if (i >= a.length || i >= b.length) {
+        distance++;
+      } else if (a[i] != b[i]) {
+        distance++;
+      }
+    }
+
+    return 100 - ((distance / len) * 100);
+  }
+
+  // ============================================================
+  // MATCH SCORE
+  // ============================================================
+
+  double calculateMatchScore(String item1, String item2) {
+    final a = normalizeForSearch(item1);
+
+    final b = normalizeForSearch(item2);
+
+    if (a.isEmpty || b.isEmpty) {
+      return 0;
+    }
+
+    if (a == b) {
+      return 100;
+    }
+
+    final wordsA = a.split(" ").where((e) => e.isNotEmpty).toList();
+
+    final wordsB = b.split(" ").where((e) => e.isNotEmpty).toList();
+
+    if (wordsA.isEmpty || wordsB.isEmpty) {
+      return 0;
+    }
+
+    final firstScore = wordSimilaritySimple(wordsA.first, wordsB.first);
+
+    if (firstScore < 60) {
+      return 0;
+    }
+
+    int matchedWords = 0;
+
+    final usedIndexes = <int>{};
+
+    for (final wordA in wordsA) {
+      double best = 0;
+
+      int bestIndex = -1;
+
+      for (int i = 0; i < wordsB.length; i++) {
+        if (usedIndexes.contains(i)) {
+          continue;
+        }
+
+        final wordB = wordsB[i];
+
+        final score = wordSimilaritySimple(wordA, wordB);
+
+        if (score > best) {
+          best = score;
+          bestIndex = i;
+        }
+      }
+
+      if (best >= 70 && bestIndex >= 0) {
+        matchedWords++;
+
+        usedIndexes.add(bestIndex);
+      }
+    }
+
+    final maxWords = wordsA.length > wordsB.length
+        ? wordsA.length
+        : wordsB.length;
+
+    double score = (matchedWords / maxWords) * 70;
+
+    final numbersA = RegExp(
+      r'\d+(?:\.\d+)?',
+    ).allMatches(a).map((e) => e.group(0)!).toSet();
+
+    final numbersB = RegExp(
+      r'\d+(?:\.\d+)?',
+    ).allMatches(b).map((e) => e.group(0)!).toSet();
+
+    if (numbersA.isNotEmpty && numbersB.isNotEmpty) {
+      if (numbersA.intersection(numbersB).isNotEmpty) {
+        score += 20;
+      } else {
+        score -= 15;
+      }
+    }
+
+    if (wordsA.first == wordsB.first) {
+      score += 10;
+    }
+
+    if (score < 0) {
+      score = 0;
+    }
+
+    if (score > 100) {
+      score = 100;
+    }
+
+    return score;
+  }
+
+  // ============================================================
+  // SEARCH ALL MISSING ITEMS
+  // ============================================================
+
+  void searchAllMissingItems() {
+    if (inventoryRows.isEmpty || orderRows.isEmpty) {
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      searchingWarehouse = true;
+    });
+
+    final merged = buildMergedMissingItems();
+
+    final results = <Map<String, dynamic>>[];
+
+    for (final data in merged.values) {
+      final item = data["item"].toString();
+
       final qty = data["qty"] as int;
 
-      bool found = false;
-
       double bestScore = 0;
-      String bestItem = "";
 
-      for (int j = 1; j < orderRows.length; j++) {
-        final priceRow = orderRows[j];
+      String bestWarehouseItem = "";
 
-        if (priceRow.isEmpty) continue;
+      List<String>? bestWarehouseRow;
 
-        String priceItem = "";
-        int startIndex = 0;
-
-        if (priceRow.isNotEmpty &&
-            RegExp(r'^\d+$').hasMatch(priceRow[0].trim())) {
-          startIndex = 1;
+      for (final warehouse in orderRows) {
+        if (warehouse.isEmpty) {
+          continue;
         }
 
-        for (int x = startIndex; x < priceRow.length; x++) {
-          final cell = priceRow[x].trim();
+        final warehouseItem = warehouse[0].trim();
 
-          if (RegExp(r'^\d+\.\d+$').hasMatch(cell)) {
-            break;
-          }
-
-          priceItem += "$cell ";
+        if (warehouseItem.isEmpty) {
+          continue;
         }
 
-        priceItem = priceItem.trim();
+        final score = calculateMatchScore(item, warehouseItem);
 
-        if (priceItem.isEmpty) continue;
+        if (score > bestScore) {
+          bestScore = score;
 
-        final score = Matcher.findBestMatch(
-          Matcher.normalize(item),
-          [
-            {
-              "original": priceItem,
-              "normalized": Matcher.normalize(priceItem),
-            }
+          bestWarehouseItem = warehouseItem;
+
+          bestWarehouseRow = warehouse;
+        }
+      }
+
+      if (bestScore >= 60 && bestWarehouseRow != null) {
+        double purchase = 0;
+        double sale = 0;
+
+        if (bestWarehouseRow.length >= 3) {
+          purchase =
+              double.tryParse(bestWarehouseRow[2].replaceAll(",", "").trim()) ??
+              0;
+        }
+
+        if (bestWarehouseRow.length >= 4) {
+          sale =
+              double.tryParse(bestWarehouseRow[3].replaceAll(",", "").trim()) ??
+              0;
+        }
+
+        results.add({
+          "item": item,
+          "qty": qty,
+          "matchedItem": bestWarehouseItem,
+          "score": bestScore,
+          "purchase": purchase,
+          "sale": sale,
+          "warehouseId": selectedWarehouseId,
+          "warehouseName":
+              selectedWarehouse?["name"]?.toString() ??
+              selectedWarehouseId ??
+              "",
+          "added": isItemSelected(item, bestWarehouseItem),
+        });
+      }
+    }
+
+    results.sort(
+      (a, b) => (b["score"] as double).compareTo(a["score"] as double),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      warehouseSearchResults = results;
+
+      searchingWarehouse = false;
+
+      statusText = "${results.length} matching items found ✔";
+    });
+  }
+
+  // ============================================================
+  // CHECK SELECTED
+  // ============================================================
+
+  bool isItemSelected(String item, String matchedItem) {
+    return selectedItems.any(
+      (x) => x["item"] == item && x["matchedItem"] == matchedItem,
+    );
+  }
+
+  // ============================================================
+  // ADD SELECTED ITEM
+  // ============================================================
+
+  void addSelectedItem(Map<String, dynamic> result) {
+    final exists = isItemSelected(
+      result["item"].toString(),
+      result["matchedItem"].toString(),
+    );
+
+    if (exists) {
+      _showMessage("Item already added.");
+      return;
+    }
+
+    setState(() {
+      selectedItems.add({...result, "added": true});
+
+      result["added"] = true;
+    });
+
+    _showMessage("${result["item"]} added ✔");
+  }
+
+  // ============================================================
+  // REMOVE SELECTED ITEM
+  // ============================================================
+
+  void removeSelectedItem(Map<String, dynamic> result) {
+    setState(() {
+      selectedItems.removeWhere(
+        (x) =>
+            x["item"] == result["item"] &&
+            x["matchedItem"] == result["matchedItem"],
+      );
+
+      result["added"] = false;
+    });
+  }
+
+  // ============================================================
+  // WAREHOUSE SEARCH RESULTS
+  // ============================================================
+
+  Widget buildWarehouseSearchResults() {
+    if (inventoryRows.isEmpty || orderRows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.search_rounded,
+                  color: primary,
+                  size: 19,
+                ),
+              ),
+
+              const SizedBox(width: 9),
+
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Warehouse Matches",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: textDark,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "Items matched with warehouse inventory.",
+                      style: TextStyle(fontSize: 10, color: textMuted),
+                    ),
+                  ],
+                ),
+              ),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  "${warehouseSearchResults.length}",
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: success,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+
+          if (searchingWarehouse)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (warehouseSearchResults.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                "No items matched at 60% or higher.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textMuted, fontSize: 12),
+              ),
+            )
+          else
+            ...warehouseSearchResults.map((result) => _buildMatchRow(result)),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // MATCH ROW
+  // ============================================================
+
+  Widget _buildMatchRow(Map<String, dynamic> result) {
+    final score = result["score"] as double;
+
+    final added = result["added"] == true;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: added ? Colors.green.shade50 : const Color(0xffF8FAFD),
+        borderRadius: BorderRadius.circular(11),
+
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: added
+                  ? Colors.green.withOpacity(.10)
+                  : primary.withOpacity(.07),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              added ? Icons.check_rounded : Icons.medication_outlined,
+              color: added ? success : primary,
+              size: 18,
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  result["item"].toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: textDark,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Row(
+                  children: [
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        result["matchedItem"].toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: textMuted, fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 6),
+
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 5,
+                  children: [
+                    _smallBadge(
+                      Icons.production_quantity_limits,
+                      "Qty ${result["qty"]}",
+                    ),
+                    _smallBadge(
+                      Icons.payments_outlined,
+                      "${result["sale"]} OMR",
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 9),
+
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: added
+                      ? Colors.green.withOpacity(.12)
+                      : primary.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  "${score.toStringAsFixed(0)}%",
+                  style: TextStyle(
+                    color: added ? success : primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              SizedBox(
+                height: 32,
+                child: ElevatedButton.icon(
+                  onPressed: added
+                      ? () => removeSelectedItem(result)
+                      : () => addSelectedItem(result),
+                  icon: Icon(
+                    added ? Icons.remove_rounded : Icons.add_rounded,
+                    size: 15,
+                  ),
+                  label: Text(
+                    added ? "Remove" : "Add",
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: added ? danger : success,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 9),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DRUG DETAILS CARD
+  // ============================================================
+
+  Widget buildDrugDetailsItemsCard() {
+    if (loadingDrugDetailsItems) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 10),
+            Text("Loading Drug Details items..."),
           ],
-        );
+        ),
+      );
+    }
 
-        if (score.score > bestScore) {
-          bestScore = score.score.toDouble();
-          bestItem = priceItem;
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.medication_rounded, color: primary, size: 20),
+
+              const SizedBox(width: 8),
+
+              const Expanded(
+                child: Text(
+                  "Drug Details Items",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                  ),
+                ),
+              ),
+
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  "${drugDetailsItems.length}",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          const Text(
+            "These items come from Drug Details and will be placed in a separate Excel sheet.",
+            style: TextStyle(color: textMuted, fontSize: 11),
+          ),
+
+          const SizedBox(height: 11),
+
+          if (drugDetailsItems.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                "No Drug Details items added.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: textMuted, fontSize: 12),
+              ),
+            )
+          else
+            ...drugDetailsItems.asMap().entries.map(
+              (entry) => _buildDrugDetailsRow(entry.value, entry.key),
+            ),
+
+          if (drugDetailsItems.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            SizedBox(
+              width: double.infinity,
+              height: 37,
+              child: OutlinedButton.icon(
+                onPressed: clearDrugDetailsItems,
+                icon: const Icon(Icons.delete_outline, size: 17),
+                label: const Text(
+                  "Clear Drug Details Items",
+                  style: TextStyle(fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: danger,
+                  side: BorderSide(color: Colors.red.shade200),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DRUG DETAILS ROW
+  // ============================================================
+
+  Widget _buildDrugDetailsRow(Map<String, dynamic> item, int index) {
+    final name = item["item"]?.toString() ?? "";
+
+    final qty = item["qty"]?.toString() ?? "0";
+
+    final warehouse = item["warehouse"]?.toString() ?? "";
+
+    final matched = item["matchedItem"]?.toString() ?? "";
+
+    final score = double.tryParse(item["matchPercent"]?.toString() ?? "") ?? 0;
+
+    final price = double.tryParse(item["sale"]?.toString() ?? "") ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xffF8FAFD),
+        borderRadius: BorderRadius.circular(10),
+
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: primary.withOpacity(.08),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                "${index + 1}",
+                style: const TextStyle(
+                  color: primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 9),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+
+                const SizedBox(height: 3),
+
+                if (warehouse.isNotEmpty)
+                  Text(
+                    "Warehouse: $warehouse",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10, color: textMuted),
+                  ),
+
+                if (matched.isNotEmpty)
+                  Text(
+                    "Matched: $matched",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: textMuted, fontSize: 10),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                "Qty: $qty",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                "${price.toStringAsFixed(3)} OMR",
+                style: const TextStyle(color: success, fontSize: 10),
+              ),
+
+              Text(
+                "${score.toStringAsFixed(0)}%",
+                style: const TextStyle(color: primary, fontSize: 10),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // GENERATE ORDER
+  // ============================================================
+
+  Future<void> generateOrder() async {
+    if (inventoryRows.isEmpty && drugDetailsItems.isEmpty) {
+      setState(() {
+        statusText =
+            "Please upload Missing Items or add items from Drug Details.";
+      });
+
+      return;
+    }
+
+    if (orderRows.isEmpty && drugDetailsItems.isEmpty) {
+      setState(() {
+        statusText = "Please select a Warehouse first.";
+      });
+
+      return;
+    }
+
+    if (isGenerating) return;
+
+    await loadDrugDetailsItems();
+
+    if (!mounted) return;
+
+    setState(() {
+      isGenerating = true;
+      statusText = "Generating order...";
+      generatedFileBytes = null;
+    });
+
+    try {
+      final excel = Excel.createExcel();
+
+      final resultSheet = excel["Sheet1"];
+
+      final missingSheet = excel["Missing"];
+
+      final drugDetailsSheet = excel["Drug Details Items"];
+
+      // ========================================================
+      // RESULT HEADERS
+      // ========================================================
+
+      resultSheet.appendRow([
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Matched Item"),
+        TextCellValue("Purchase Price"),
+        TextCellValue("Total"),
+      ]);
+
+      double totalSale = 0;
+
+      // ========================================================
+      // NORMAL MISSING ITEMS
+      // ========================================================
+
+      final merged = buildMergedMissingItems();
+
+      final similarItems = <Map<String, dynamic>>[];
+
+      final notFound = <Map<String, dynamic>>[];
+
+      int processed = 0;
+
+      for (final data in merged.values) {
+        final item = data["item"].toString();
+
+        final qty = data["qty"] as int;
+
+        double bestScore = 0;
+
+        String bestItem = "";
+
+        List<String>? bestWarehouse;
+
+        for (final warehouse in orderRows) {
+          if (warehouse.isEmpty) {
+            continue;
+          }
+
+          final warehouseItem = warehouse[0].trim();
+
+          if (warehouseItem.isEmpty) {
+            continue;
+          }
+
+          final score = calculateMatchScore(item, warehouseItem);
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestItem = warehouseItem;
+            bestWarehouse = warehouse;
+          }
         }
 
-        if (score.matchedItem != null && score.score >= 60) {
+        if (bestScore >= 60 && bestWarehouse != null) {
+          double purchase = 0;
+          double sale = 0;
 
-          final prices = extractPrices(priceRow);
-
-          double purchasePrice = 0;
-          double salePrice = 0;
-          double saleTotal = 0;
-
-          if (prices.length >= 2) {
-            purchasePrice = prices[0];
-            salePrice = prices[1];
-            saleTotal = salePrice * qty;
-
-            grandSaleTotal += saleTotal;
+          if (bestWarehouse.length >= 3) {
+            purchase =
+                double.tryParse(bestWarehouse[2].replaceAll(",", "").trim()) ??
+                0;
           }
+
+          if (bestWarehouse.length >= 4) {
+            sale =
+                double.tryParse(bestWarehouse[3].replaceAll(",", "").trim()) ??
+                0;
+          }
+
+          final total = sale * qty;
+
+          totalSale += total;
 
           resultSheet.appendRow([
             TextCellValue(item),
             TextCellValue(qty.toString()),
-            TextCellValue(priceItem),
-            TextCellValue(purchasePrice.toStringAsFixed(3)),
-            TextCellValue(salePrice.toStringAsFixed(3)),
-            TextCellValue(saleTotal.toStringAsFixed(3)),
+            TextCellValue(bestItem),
+            TextCellValue(purchase.toStringAsFixed(3)),
+            TextCellValue(total.toStringAsFixed(3)),
           ]);
-
-          found = true;
-
-          break;
-        }
-      }
-
-      if (!found) {
-        final row = {
-          "item": item,
-          "qty": qty,
-          "similar": bestItem,
-          "score": bestScore.toStringAsFixed(0),
-        };
-
-        if (bestScore >= 40) {
-          similarItems.add(row);
         } else {
-          lowSimilarItems.add(row);
+          final dataMap = {
+            "item": item,
+            "qty": qty,
+            "similar": bestItem,
+            "score": bestScore.toStringAsFixed(0),
+          };
+
+          if (bestScore >= 40) {
+            similarItems.add(dataMap);
+          } else {
+            notFound.add(dataMap);
+          }
+        }
+
+        processed++;
+
+        if (mounted) {
+          setState(() {
+            statusText =
+                "Processing Missing Items $processed / ${merged.length}...";
+          });
         }
       }
-    }
 
-// عنوان الشيت
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-      TextCellValue("Similar Item"),
-      TextCellValue("Match %"),
-    ]);
-    missingSheet.appendRow([
-      TextCellValue("POSSIBLE MATCHES ITEMS"),
-    ]);
+      // ========================================================
+      // MISSING SHEET
+      // ========================================================
 
-// الأصناف من 40 إلى أقل من 60
-    for (final e in similarItems) {
       missingSheet.appendRow([
-        TextCellValue(e["item"]),
-        TextCellValue(e["qty"].toString()),
-        TextCellValue(e["similar"]),
-        TextCellValue("${e["score"]}%"),
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Similar Item"),
+        TextCellValue("Match %"),
       ]);
-    }
 
-// فاصل
-    missingSheet.appendRow([]);
-    missingSheet.appendRow([
-      TextCellValue("================ NOT MATCHED ITEMS (LESS SIMILARITY) ================"),
-    ]);
-    missingSheet.appendRow([
-      TextCellValue("Item"),
-      TextCellValue("Qty"),
-      TextCellValue("Similar Item"),
-      TextCellValue("Match %"),
-    ]);
+      missingSheet.appendRow([TextCellValue("POSSIBLE MATCHES")]);
 
-// أقل من 40
-    for (final e in lowSimilarItems) {
+      for (final item in similarItems) {
+        missingSheet.appendRow([
+          TextCellValue(item["item"].toString()),
+          TextCellValue(item["qty"].toString()),
+          TextCellValue(item["similar"].toString()),
+          TextCellValue("${item["score"]}%"),
+        ]);
+      }
+
+      missingSheet.appendRow([]);
+
+      missingSheet.appendRow([TextCellValue("NOT MATCHED ITEMS")]);
+
       missingSheet.appendRow([
-        TextCellValue(e["item"]),
-        TextCellValue(e["qty"].toString()),
-        TextCellValue(e["similar"]),
-
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Similar Item"),
+        TextCellValue("Match %"),
       ]);
+
+      for (final item in notFound) {
+        missingSheet.appendRow([
+          TextCellValue(item["item"].toString()),
+          TextCellValue(item["qty"].toString()),
+          TextCellValue(item["similar"].toString()),
+          TextCellValue("${item["score"]}%"),
+        ]);
+      }
+
+      // ========================================================
+      // TOTAL NORMAL ORDER
+      // ========================================================
+
+      resultSheet.appendRow([]);
+
+      resultSheet.appendRow([
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue("TOTAL"),
+        TextCellValue(""),
+        TextCellValue(totalSale.toStringAsFixed(3)),
+      ]);
+
+      // ========================================================
+      // SELECTED ITEMS SHEET
+      // ========================================================
+
+      final selectedSheet = excel["Selected Items"];
+
+      selectedSheet.appendRow([
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Warehouse"),
+        TextCellValue("Matched Item"),
+        TextCellValue("Match %"),
+        TextCellValue("Purchase Price"),
+        TextCellValue("Sale Price"),
+        TextCellValue("Total"),
+      ]);
+
+      double selectedTotal = 0;
+
+      for (final item in selectedItems) {
+        final originalItem = item["item"].toString();
+
+        final qty = item["qty"] as int;
+
+        final warehouseName = item["warehouseName"].toString();
+
+        final matchedItem = item["matchedItem"].toString();
+
+        final score = item["score"] as double;
+
+        final purchase = (item["purchase"] as num).toDouble();
+
+        final sale = (item["sale"] as num).toDouble();
+
+        final total = sale * qty;
+
+        selectedTotal += total;
+
+        selectedSheet.appendRow([
+          TextCellValue(originalItem),
+          TextCellValue(qty.toString()),
+          TextCellValue(warehouseName),
+          TextCellValue(matchedItem),
+          TextCellValue("${score.toStringAsFixed(0)}%"),
+          TextCellValue(purchase.toStringAsFixed(3)),
+          TextCellValue(sale.toStringAsFixed(3)),
+          TextCellValue(total.toStringAsFixed(3)),
+        ]);
+      }
+
+      selectedSheet.appendRow([]);
+
+      selectedSheet.appendRow([
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue("TOTAL"),
+        TextCellValue(selectedTotal.toStringAsFixed(3)),
+      ]);
+
+      // ========================================================
+      // DRUG DETAILS ITEMS SHEET
+      // ========================================================
+
+      drugDetailsSheet.appendRow([
+        TextCellValue("Item"),
+        TextCellValue("Qty"),
+        TextCellValue("Warehouse"),
+        TextCellValue("Matched Item"),
+        TextCellValue("Match %"),
+        TextCellValue("Purchase Price"),
+        TextCellValue("Sale Price"),
+        TextCellValue("Total"),
+        TextCellValue("Registration"),
+        TextCellValue("Manufacturer"),
+      ]);
+
+      double drugDetailsTotal = 0;
+
+      for (final item in drugDetailsItems) {
+        final originalItem = item["item"]?.toString() ?? "";
+
+        final qty = int.tryParse(item["qty"]?.toString() ?? "") ?? 0;
+
+        final warehouse = item["warehouse"]?.toString() ?? "";
+
+        final matchedItem = item["matchedItem"]?.toString() ?? "";
+
+        final matchPercent =
+            double.tryParse(item["matchPercent"]?.toString() ?? "") ?? 0;
+
+        final purchase =
+            double.tryParse(item["purchase"]?.toString() ?? "") ?? 0;
+
+        final sale = double.tryParse(item["sale"]?.toString() ?? "") ?? 0;
+
+        final registration = item["registration"]?.toString() ?? "";
+
+        final manufacturer = item["manufacturer"]?.toString() ?? "";
+
+        final total = sale * qty;
+
+        drugDetailsTotal += total;
+
+        drugDetailsSheet.appendRow([
+          TextCellValue(originalItem),
+          TextCellValue(qty.toString()),
+          TextCellValue(warehouse),
+          TextCellValue(matchedItem),
+          TextCellValue("${matchPercent.toStringAsFixed(0)}%"),
+          TextCellValue(purchase.toStringAsFixed(3)),
+          TextCellValue(sale.toStringAsFixed(3)),
+          TextCellValue(total.toStringAsFixed(3)),
+          TextCellValue(registration),
+          TextCellValue(manufacturer),
+        ]);
+      }
+
+      // ========================================================
+      // DRUG DETAILS TOTAL
+      // ========================================================
+
+      drugDetailsSheet.appendRow([]);
+
+      drugDetailsSheet.appendRow([
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue(""),
+        TextCellValue("TOTAL"),
+        TextCellValue(drugDetailsTotal.toStringAsFixed(3)),
+        TextCellValue(""),
+        TextCellValue(""),
+      ]);
+
+      // ========================================================
+      // ENCODE
+      // ========================================================
+
+      final encoded = excel.encode();
+
+      if (encoded == null) {
+        throw Exception("Could not generate Excel file.");
+      }
+
+      generatedFileBytes = Uint8List.fromList(encoded);
+
+      if (!mounted) return;
+
+      setState(() {
+        isGenerating = false;
+
+        statusText = "Order generated successfully ✔";
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isGenerating = false;
+
+        statusText = "Error generating order:\n$e";
+      });
     }
-
-    // المجموع في النهاية
-
-    resultSheet.appendRow([]);
-
-
-    resultSheet.appendRow([
-
-      TextCellValue(""),
-
-      TextCellValue(""),
-
-      TextCellValue("TOTAL"),
-
-      TextCellValue(""),
-
-      TextCellValue(""),
-
-      TextCellValue(
-        grandSaleTotal.toStringAsFixed(3),
-      ),
-
-    ]);
-
-
-
-    generatedFileBytes =
-        Uint8List.fromList(
-          excel.encode()!,
-        );
-
-
-
-    setState(() {
-
-      isGenerating = false;
-      statusText = "Done ✔";
-
-    });
-
-
   }
-  void resetScreen() {
-    setState(() {
-      inventoryRows.clear();
-      orderRows.clear();
-      generatedFileBytes = null;
-      inventoryFileName = null;
-      orderFileName = null;
-      statusText = "Ready for a new order";
-    });
-  }
+
+  // ============================================================
+  // SAVE HISTORY
+  // ============================================================
+
   Future<void> saveOrderLocally({
     required String fileName,
     required String filePath,
   }) async {
     final prefs = await SharedPreferences.getInstance();
 
-    final List<String> history =
-        prefs.getStringList("orders") ?? [];
+    final history = prefs.getStringList("orders") ?? [];
 
     final order = {
       "fileName": fileName,
       "filePath": filePath,
       "date": DateFormat("yyyy-MM-dd").format(DateTime.now()),
-      "items": inventoryRows.length,
+      "items": inventoryRows.length + drugDetailsItems.length,
     };
 
     history.add(jsonEncode(order));
 
     await prefs.setStringList("orders", history);
-
-
   }
-  Future<void> showOrdersHistory() async {
-    final prefs = await SharedPreferences.getInstance();
 
-    List<String> orders = prefs.getStringList("orders") ?? [];
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Orders History"),
-        content: SizedBox(
-          height: 300,
-          width: 300,
-          child: ListView(
-            children: orders
-                .map((e) => Text(e))
-                .toList(),
-          ),
-        ),
-      ),
-    );
-  }
+  // ============================================================
+  // SAVE FILE
+  // ============================================================
 
   Future<void> downloadFile(Uint8List bytes) async {
-    final customName = await askFileName();
+    try {
+      final location = await getSaveLocation(suggestedName: "Order.xlsx");
 
-    if(customName == null) return;
+      if (location == null) {
+        return;
+      }
 
-    final today =
-    DateFormat("yyyy-MM-dd").format(DateTime.now());
+      final path = location.path.endsWith(".xlsx")
+          ? location.path
+          : "${location.path}.xlsx";
 
-    final fileName = customName.isEmpty
-        ? "Order_$today.xlsx"
-        : "$customName.xlsx";
-    final location = await getSaveLocation(suggestedName: fileName);
+      final file = File(path);
 
-    if (location == null) return;
+      await file.writeAsBytes(bytes);
 
-    final filePath = location.path.endsWith('.xlsx')
-        ? location.path
-        : '${location.path}.xlsx';
+      final fileName = path.split(Platform.pathSeparator).last;
 
-    final file = File(filePath);
-    await file.writeAsBytes(bytes);
+      await saveOrderLocally(fileName: fileName, filePath: path);
 
-    setState(() {
-      statusText = "Saved Successfully ✔";
+      final prefs = await SharedPreferences.getInstance();
 
-    });
-    await saveOrderLocally(
-      fileName: fileName,
-      filePath: filePath,
-    );
+      await prefs.remove("drug_details_order_items");
 
+      if (!mounted) return;
 
-    await Process.run('cmd', ['/c', 'start', '', filePath]);
-    resetScreen();
-  }
-  Future<List<String>> getOrders() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList("orders") ?? [];
-  }
+      setState(() {
+        drugDetailsItems.clear();
 
+        statusText = "Saved Successfully ✔";
+      });
 
-  Future<File> convertPdfToCsv(File pdfFile) async {
-    final tempDir = Directory.systemTemp;
+      await Process.run('cmd', ['/c', 'start', '', path]);
 
-    final outputPath =
-        "${tempDir.path}\\converted_${DateTime.now().millisecondsSinceEpoch}.csv";
+      resetScreen();
+    } catch (e) {
+      if (!mounted) return;
 
-    // مسار مجلد البرنامج
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-
-    // Java الموجودة مع البرنامج
-    final javaPath = "$exeDir\\jre\\bin\\java.exe";
-
-    // tabula.jar الموجودة مع البرنامج
-    final tabulaPath = "$exeDir\\tools\\tabula.jar";
-
-    final result = await Process.run(
-      javaPath,
-      [
-        "-jar",
-        tabulaPath,
-        "-p",
-        "all",
-        "-f",
-        "CSV",
-        "-o",
-        outputPath,
-        pdfFile.path,
-      ],
-    );
-
-    if (result.exitCode != 0) {
-      throw Exception(result.stderr.toString());
+      setState(() {
+        statusText = "Error saving file:\n$e";
+      });
     }
-
-    return File(outputPath);
   }
 
-  Future<List<List<String>>> csvToRows(File file) async {
-    final text = await file.readAsString();
+  // ============================================================
+  // RESET
+  // ============================================================
 
-    return text
-        .split("\n")
-        .where((e) => e.trim().isNotEmpty)
-        .map(
-          (line) =>
-          line.split(",").map((e) => e.replaceAll('"', '').trim()).toList(),
-    )
-        .toList();
+  void resetScreen() {
+    setState(() {
+      inventoryRows.clear();
+
+      orderRows.clear();
+
+      warehouseSearchResults.clear();
+
+      selectedItems.clear();
+
+      generatedFileBytes = null;
+
+      inventoryFileName = null;
+
+      selectedWarehouseId = null;
+
+      selectedWarehouse = null;
+
+      drugDetailsItems.clear();
+
+      statusText = "Ready";
+    });
   }
-  Future<String?> askFileName() async {
-    final controller = TextEditingController();
 
-    return await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Save Order"),
-
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: "File Name",
-          ),
-        ),
-
-        actions: [
-
-          TextButton(
-            onPressed: (){
-              Navigator.pop(context);
-            },
-            child: const Text("Cancel"),
-          ),
-
-          ElevatedButton(
-            onPressed: (){
-              Navigator.pop(
-                context,
-                controller.text.trim(),
-              );
-            },
-            child: const Text("Save"),
-          ),
-        ],
-      ),
-    );
-  }
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: background,
+
       appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
 
         leading: IconButton(
-          color: Color(0xff0050c0),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-
-            Navigator.pop(context);
-
-          },
+          icon: const Icon(Icons.arrow_back_rounded, color: primary),
+          onPressed: () => Navigator.pop(context),
         ),
 
+        titleSpacing: 4,
+
+        title: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: primary.withOpacity(.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.inventory_2_rounded,
+                color: primary,
+                size: 21,
+              ),
+            ),
+
+            const SizedBox(width: 10),
+
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Stock Gap",
+                  style: TextStyle(
+                    color: textDark,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "Order Generator",
+                  style: TextStyle(color: Colors.grey, fontSize: 11),
+                ),
+              ],
+            ),
+          ],
+        ),
 
         actions: [
-
-          Center(
-            child: IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () {
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HistoryScreen(),
-                  ),
-                );
-
-              },
-            ),
+          IconButton(
+            tooltip: "Order History",
+            icon: const Icon(Icons.history_rounded, color: primary),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              );
+            },
           ),
 
-
           IconButton(
-            icon: const Icon(
-              Icons.logout,
-              color: Color(0xff0050c0),
-            ),
+            tooltip: "Logout",
+            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
             onPressed: logout,
           ),
 
+          const SizedBox(width: 8),
         ],
-
-
-        backgroundColor: Colors.grey.shade100,
-
-        elevation: 0,
-
-
-        centerTitle: false,
-
-
-
-
       ),
-      backgroundColor: Colors.grey.shade100,
+
       body: Center(
         child: SingleChildScrollView(
-          child: SizedBox(
-            width: 800,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1050),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPageHeader(),
+
+                const SizedBox(height: 18),
+
+                _buildSteps(),
+
+                const SizedBox(height: 22),
+
+                _sectionTitle(
+                  icon: Icons.input_rounded,
+                  title: "Order Input",
+                  subtitle:
+                      "Add missing items or select items from Drug Details.",
+                ),
+
+                const SizedBox(height: 11),
+
+                _buildInputCards(),
+
+                const SizedBox(height: 22),
+
+                _sectionTitle(
+                  icon: Icons.warehouse_rounded,
+                  title: "Warehouse",
+                  subtitle: "Choose the warehouse you want to order from.",
+                ),
+
+                const SizedBox(height: 11),
+
+                _buildWarehouseCard(),
+
+                if (selectedWarehouse != null) ...[
+                  const SizedBox(height: 9),
+                  _buildWarehouseInfoCard(),
+                ],
+
+                if (inventoryRows.isNotEmpty && orderRows.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+
+                  _sectionTitle(
+                    icon: Icons.compare_arrows_rounded,
+                    title: "Matched Items",
+                    subtitle:
+                        "Review the items matched with the warehouse inventory.",
+                  ),
+
+                  const SizedBox(height: 11),
+
+                  buildWarehouseSearchResults(),
+                ],
+
+                if (selectedItems.isNotEmpty) ...[
+                  const SizedBox(height: 15),
+                  _buildSelectedSummary(),
+                ],
+
+                const SizedBox(height: 22),
+
+                _buildGenerateArea(),
+
+                if (statusText.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildStatusCard(),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PAGE HEADER
+  // ============================================================
+
+  Widget _buildPageHeader() {
+    final itemCount = inventoryRows.length + drugDetailsItems.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xff0050C0), Color(0xff1769D1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(19),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withOpacity(.14),
+            blurRadius: 18,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.14),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(
+              Icons.shopping_cart_checkout_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+
+          const SizedBox(width: 14),
+
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Create New Order",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                SizedBox(height: 4),
+
+                Text(
+                  "Upload missing items, choose a warehouse and generate your order.",
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (itemCount > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(.14),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Row(
                 children: [
-                  const SizedBox(height: 10),
-
-                  const Text(
-                    "Stock Gap Generator",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 16,
                   ),
-
-                  const SizedBox(height: 40),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildUploadCard(
-                          title: "Missing Items",
-                          fileName: inventoryFileName,
-                          icon: Icons.inventory,
-                          onPressed: pickInventory,
-                          iconColor: Color(0xff0050c0),
-                        ),
-                      ),
-
-                      const SizedBox(width: 20),
-
-                      Expanded(
-                        child: _buildUploadCard(
-                          title: "Price List",
-                          fileName: orderFileName,
-                          icon: Icons.receipt_long,
-                          onPressed: pickOrder,
-                          iconColor: Color(0xff0050c0),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  SizedBox(
-                    height: 55,
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed:
-                      (inventoryFileName != null &&
-                          orderFileName != null &&
-                          !isGenerating)
-                          ? generateOrder
-                          : null,
-
-                      icon: isGenerating
-                          ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                          : Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                      ),
-
-                      label: Text(
-                        isGenerating ? "Processing..." : "Generate Order",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-
-                        disabledBackgroundColor: const Color(0xff0050c0),
-                        foregroundColor: Colors.white,
-
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 25),
-
-                  if (generatedFileBytes != null)
-                    SizedBox(
-                      height: 55,
-                      child: ElevatedButton.icon(
-                        onPressed: () => downloadFile(generatedFileBytes!),
-                        icon: const Icon(
-                          Icons.download,
-                          color: Color(0xff0050c0),
-                        ),
-                        label: Center(
-                          child: const Text(
-                            "Save Excel",
-                            style: TextStyle(color: Color(0xff0050c0)),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 30),
-
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Text(
-                          statusText,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xff0050c0),
-                          ),
-                        ),
-                      ),
+                  const SizedBox(width: 5),
+                  Text(
+                    "$itemCount",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        color: Colors.transparent,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              storeCode,
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              widget.expireDate != null
-                  ? "Valid Until: ${widget.expireDate!.toDate().day}/${widget.expireDate!.toDate().month}/${widget.expireDate!.toDate().year}"
-                  : "No Validity Date",
-              style: const TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
-}
 
-Widget _buildUploadCard({
-  required String title,
-  required String? fileName,
-  required IconData icon,
-  required Color iconColor,
-  required VoidCallback onPressed,
-}) {
-  final uploaded = fileName != null;
+  // ============================================================
+  // STEPS
+  // ============================================================
 
-  return Card(
-    elevation: 4,
-    child: Padding(
-      padding: const EdgeInsets.all(20),
+  Widget _buildSteps() {
+    final step1 = inventoryRows.isNotEmpty || drugDetailsItems.isNotEmpty;
+
+    final step2 = selectedWarehouseId != null;
+
+    final step3 =
+        warehouseSearchResults.isNotEmpty ||
+        (drugDetailsItems.isNotEmpty && step2);
+
+    final step4 = generatedFileBytes != null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.03),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _buildStepItem(number: "1", title: "Items", active: step1),
+
+          _buildStepLine(step2),
+
+          _buildStepItem(number: "2", title: "Warehouse", active: step2),
+
+          _buildStepLine(step3),
+
+          _buildStepItem(number: "3", title: "Review", active: step3),
+
+          _buildStepLine(step4),
+
+          _buildStepItem(number: "4", title: "Generate", active: step4),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepItem({
+    required String number,
+    required String title,
+    required bool active,
+  }) {
+    return Expanded(
       child: Column(
         children: [
-          Icon(
-            uploaded ? Icons.check_circle : icon,
-            size: 50,
-            color: uploaded ? Colors.green : Color(0xff0050c0),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: active ? primary : const Color(0xffF1F4F8),
+              shape: BoxShape.circle,
+              boxShadow: active
+                  ? [
+                      BoxShadow(
+                        color: primary.withOpacity(.16),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: active
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    )
+                  : Text(
+                      number,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+            ),
           ),
-          const SizedBox(height: 15),
+
+          const SizedBox(height: 6),
+
           Text(
             title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            fileName ?? "No file selected",
             textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: onPressed,
-            child: Text(
-              uploaded ? "Change File" : "Upload",
-              style: TextStyle(color: Color(0xff0050c0)),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: active ? FontWeight.bold : FontWeight.w500,
+              color: active ? primary : Colors.grey.shade600,
             ),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildStepLine(bool active) {
+    return Expanded(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        height: 2,
+        margin: const EdgeInsets.only(bottom: 18),
+        decoration: BoxDecoration(
+          color: active ? primary : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SECTION TITLE
+  // ============================================================
+
+  Widget _sectionTitle({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 37,
+          height: 37,
+          decoration: BoxDecoration(
+            color: primary.withOpacity(.08),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: primary, size: 19),
+        ),
+
+        const SizedBox(width: 10),
+
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: textDark,
+                ),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                subtitle,
+                style: const TextStyle(color: textMuted, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // INPUT CARDS
+  // ============================================================
+
+  Widget _buildInputCards() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _buildInputCard(
+            title: "Missing Items",
+            subtitle: inventoryRows.isEmpty
+                ? "Upload Excel file"
+                : "${inventoryRows.length - 1} rows loaded",
+            icon: Icons.upload_file_rounded,
+            active: inventoryRows.isNotEmpty,
+            buttonText: inventoryRows.isEmpty ? "Upload" : "Change",
+            onPressed: pickInventory,
+          ),
+        ),
+
+        const SizedBox(width: 12),
+
+        Expanded(child: _buildDrugDetailsCompactCard()),
+      ],
+    );
+  }
+
+  Widget _buildInputCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool active,
+    required String buttonText,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 43,
+            height: 43,
+            decoration: BoxDecoration(
+              color: active ? Colors.green.shade50 : primary.withOpacity(.07),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(
+              active ? Icons.check_rounded : icon,
+              color: active ? success : primary,
+              size: 22,
+            ),
+          ),
+
+          const SizedBox(width: 11),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: textDark,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: textMuted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 7),
+
+          OutlinedButton(
+            onPressed: onPressed,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: primary,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              side: BorderSide(color: primary.withOpacity(.22)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+              ),
+            ),
+            child: Text(
+              buttonText,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DRUG DETAILS COMPACT
+  // ============================================================
+
+  Widget _buildDrugDetailsCompactCard() {
+    final count = drugDetailsItems.length;
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 43,
+            height: 43,
+            decoration: BoxDecoration(
+              color: primary.withOpacity(.07),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.medication_rounded,
+              color: primary,
+              size: 22,
+            ),
+          ),
+
+          const SizedBox(width: 11),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        "Drug Details",
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: textDark,
+                        ),
+                      ),
+                    ),
+
+                    if (count > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primary.withOpacity(.08),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          "$count",
+                          style: const TextStyle(
+                            color: primary,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  count == 0
+                      ? "No items added"
+                      : "$count items ready for order",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: textMuted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+
+          if (count > 0)
+            IconButton(
+              tooltip: "Clear",
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Colors.redAccent,
+                size: 19,
+              ),
+              onPressed: clearDrugDetailsItems,
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // WAREHOUSE CARD
+  // ============================================================
+
+  Widget _buildWarehouseCard() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: selectedWarehouseId != null
+                      ? Colors.green.shade50
+                      : primary.withOpacity(.07),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  selectedWarehouseId != null
+                      ? Icons.check_rounded
+                      : Icons.warehouse_rounded,
+                  color: selectedWarehouseId != null ? success : primary,
+                  size: 22,
+                ),
+              ),
+
+              const SizedBox(width: 11),
+
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Select Warehouse",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: textDark,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      "Choose where the order will be supplied from.",
+                      style: TextStyle(color: textMuted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (orderRows.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "${orderRows.length}",
+                    style: const TextStyle(
+                      color: success,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+
+          loadingWarehouses
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : DropdownButtonFormField<String>(
+                  value: selectedWarehouseId,
+                  isExpanded: true,
+
+                  decoration: InputDecoration(
+                    labelText: "Warehouse",
+                    labelStyle: const TextStyle(fontSize: 12),
+                    prefixIcon: const Icon(
+                      Icons.warehouse_outlined,
+                      color: primary,
+                      size: 19,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xffF8FAFD),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 11,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: primary, width: 1.4),
+                    ),
+                  ),
+
+                  hint: const Text(
+                    "Choose Warehouse",
+                    style: TextStyle(fontSize: 12),
+                  ),
+
+                  items: warehouses.map((warehouse) {
+                    return DropdownMenuItem<String>(
+                      value: warehouse["id"].toString(),
+                      child: Text(
+                        warehouse["name"].toString(),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  }).toList(),
+
+                  onChanged: (value) async {
+                    if (value == null) {
+                      return;
+                    }
+
+                    final warehouse = warehouses.firstWhere(
+                      (w) => w["id"].toString() == value,
+                      orElse: () => <String, dynamic>{},
+                    );
+
+                    setState(() {
+                      selectedWarehouseId = value;
+
+                      selectedWarehouse = warehouse;
+
+                      orderRows.clear();
+
+                      warehouseSearchResults.clear();
+
+                      selectedItems.clear();
+
+                      statusText = "Loading warehouse inventory...";
+                    });
+
+                    await loadWarehouseItems(value);
+                  },
+                ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // WAREHOUSE INFO CARD
+  // ============================================================
+
+  Widget _buildWarehouseInfoCard() {
+    final warehouse = selectedWarehouse!;
+
+    final name = warehouse["name"]?.toString() ?? "-";
+
+    final code = warehouse["id"]?.toString() ?? "-";
+
+    final phone = warehouse["phone"]?.toString() ?? "";
+
+    final whatsapp = warehouse["whatsapp"]?.toString() ?? "";
+
+    final address = warehouse["address"]?.toString() ?? "";
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xffF8FAFD),
+        borderRadius: BorderRadius.circular(14),
+
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 33,
+                height: 33,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.info_outline_rounded,
+                  color: primary,
+                  size: 18,
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              const Expanded(
+                child: Text(
+                  "Warehouse Information",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: textDark,
+                  ),
+                ),
+              ),
+
+              if (orderRows.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    "${orderRows.length} items",
+                    style: const TextStyle(
+                      color: success,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _buildInfoChip(Icons.warehouse_outlined, name),
+
+              _buildInfoChip(Icons.tag_rounded, code),
+
+              if (phone.isNotEmpty) _buildInfoChip(Icons.phone_outlined, phone),
+
+              if (address.isNotEmpty)
+                _buildInfoChip(Icons.location_on_outlined, address),
+            ],
+          ),
+
+          if (whatsapp.isNotEmpty) ...[
+            const SizedBox(height: 9),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: openWarehouseWhatsApp,
+                icon: const Icon(Icons.chat_rounded, size: 16),
+                label: const Text(
+                  "WhatsApp Warehouse",
+                  style: TextStyle(fontSize: 11),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.green,
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: Colors.green.shade200),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 11,
+                    vertical: 7,
+                  ),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // INFO CHIP
+  // ============================================================
+
+  Widget _buildInfoChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(9),
+
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: primary),
+
+          const SizedBox(width: 5),
+
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 210),
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, color: Color(0xff374151)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SMALL BADGE
+  // ============================================================
+
+  Widget _smallBadge(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(7),
+
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.grey.shade600),
+
+          const SizedBox(width: 4),
+
+          Text(text, style: const TextStyle(fontSize: 9, color: textMuted)),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SELECTED SUMMARY
+  // ============================================================
+
+  Widget _buildSelectedSummary() {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(13),
+
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 37,
+            height: 37,
+            decoration: BoxDecoration(
+              color: Colors.green.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded, color: success, size: 20),
+          ),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Selected Items",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: success,
+                    fontSize: 12,
+                  ),
+                ),
+
+                const SizedBox(height: 2),
+
+                Text(
+                  "${selectedItems.length} items selected manually",
+                  style: TextStyle(color: Colors.green.shade700, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+
+          Text(
+            "${selectedItems.length}",
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.bold,
+              color: success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // GENERATE AREA
+  // ============================================================
+
+  Widget _buildGenerateArea() {
+    final canGenerate =
+        (inventoryRows.isNotEmpty || drugDetailsItems.isNotEmpty) &&
+        !isGenerating &&
+        (orderRows.isNotEmpty || drugDetailsItems.isNotEmpty);
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.03),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.file_download_outlined,
+                  color: primary,
+                  size: 20,
+                ),
+              ),
+
+              const SizedBox(width: 9),
+
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Order File",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: textDark,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "Generate an Excel order from the selected items.",
+                      style: TextStyle(color: textMuted, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: canGenerate ? generateOrder : null,
+              icon: isGenerating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.auto_awesome_rounded, size: 19),
+              label: Text(
+                isGenerating ? "Generating Order..." : "Generate Order",
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: success,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.shade300,
+                disabledForegroundColor: Colors.grey.shade600,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
+                ),
+              ),
+            ),
+          ),
+
+          if (generatedFileBytes != null) ...[
+            const SizedBox(height: 9),
+
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  downloadFile(generatedFileBytes!);
+                },
+                icon: const Icon(Icons.save_alt_rounded, size: 18),
+                label: const Text(
+                  "Save Excel File",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: primary,
+                  side: const BorderSide(color: primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // STATUS
+  // ============================================================
+
+  Widget _buildStatusCard() {
+    final bool isSuccess = statusText.contains("✔");
+
+    final bool isError =
+        statusText.toLowerCase().contains("failed") ||
+        statusText.toLowerCase().contains("error");
+
+    final color = isSuccess
+        ? success
+        : isError
+        ? Colors.redAccent
+        : primary;
+
+    final background = isSuccess
+        ? Colors.green.shade50
+        : isError
+        ? Colors.red.shade50
+        : Colors.blue.shade50;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(11),
+
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isSuccess
+                ? Icons.check_circle_rounded
+                : isError
+                ? Icons.error_outline_rounded
+                : Icons.info_outline_rounded,
+            color: color,
+            size: 18,
+          ),
+
+          const SizedBox(width: 8),
+
+          Expanded(
+            child: Text(
+              statusText,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

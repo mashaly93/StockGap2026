@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
 
       title: "StockGap",
 
-      home: const MainMenuScreen(storeCode: '', expireDate: null),
+      home: const MainMenuScreen(storeCode: '', expireDate: null, role: '',),
 
       routes: {
         Homescreen.routeName: (context) => Homescreen(),
