@@ -25,7 +25,16 @@ class MainMenuScreen extends StatefulWidget {
 
 class _MainMenuScreenState extends State<MainMenuScreen>
     with SingleTickerProviderStateMixin {
-  static const Color primaryColor = Color(0xff0050c0);
+  // ================================================================
+  // OMAN COLORS
+  // ================================================================
+
+  static const Color omanRed = Color(0xffC8102E);
+  static const Color omanGreen = Color(0xff009A44);
+  static const Color omanWhite = Colors.white;
+
+  static const Color backgroundColor = Color(0xfff5f7f8);
+  static const Color textColor = Color(0xff172033);
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -34,10 +43,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   @override
   void initState() {
     super.initState();
-
-    // ==============================================================
-    // ANIMATION CONTROLLER
-    // ==============================================================
 
     _animationController = AnimationController(
       vsync: this,
@@ -130,7 +135,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     final isStore = widget.role == "store";
 
     return Scaffold(
-      backgroundColor: const Color(0xfff4f7fb),
+      backgroundColor: backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -148,101 +153,175 @@ class _MainMenuScreenState extends State<MainMenuScreen>
 
   Widget _buildTopBar() {
     return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 30),
+      height: 78,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
           // ==========================================================
-          // LOGO
+          // OMAN FLAG STRIPE
           // ==========================================================
-          Container(
-            width: 42,
-            height: 42,
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: const Color(0xfff1f6ff),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Image.asset('assets/images/back.png', fit: BoxFit.contain),
-          ),
 
-          const SizedBox(width: 12),
 
-          // ==========================================================
-          // BRAND
-          // ==========================================================
-          const Text(
-            "StockGap",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: Color(0xff172033),
-              letterSpacing: -0.4,
-            ),
-          ),
 
-          const Spacer(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 30),
+              child: Row(
+                children: [
+                  // ==================================================
+                  // LOGO
+                  // ==================================================
 
-          // ==========================================================
-          // USER INFO
-          // ==========================================================
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xfff7f9fc),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-
-                const SizedBox(width: 7),
-                Text(
-                  widget.storeCode,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xff3c4658),
+                  Container(
+                    width: 44,
+                    height: 44,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xfffff3f4),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: omanRed.withOpacity(0.10)),
+                    ),
+                    child: Image.asset(
+                      'assets/images/back.jpeg',
+                      fit: BoxFit.contain,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
 
-          const SizedBox(width: 10),
+                  const SizedBox(width: 12),
 
-          // ==========================================================
-          // LOGOUT
-          // ==========================================================
-          Tooltip(
-            message: "Logout",
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: logout,
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: const Color(0xfffff3f3),
-                    borderRadius: BorderRadius.circular(12),
+                  // ==================================================
+                  // BRAND
+                  // ==================================================
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Full Stock",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: textColor,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+
+                      const SizedBox(height: 1),
+
+                      Row(
+                        children: [
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: const BoxDecoration(
+                              color: omanRed,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+
+                          const SizedBox(width: 4),
+
+                          const Text(
+                            "OMAN",
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.2,
+                              color: omanGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Color(0xffd64545),
-                    size: 20,
+
+                  const Spacer(),
+
+                  // ==================================================
+                  // USER INFO
+                  // ==================================================
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xfff8faf9),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: omanGreen.withOpacity(0.10)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: omanGreen.withOpacity(0.10),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.store_outlined,
+                            color: omanGreen,
+                            size: 17,
+                          ),
+                        ),
+
+                        const SizedBox(width: 8),
+
+                        Text(
+                          widget.storeCode,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xff3c4658),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+
+                  const SizedBox(width: 10),
+
+                  // ==================================================
+                  // LOGOUT
+                  // ==================================================
+                  Tooltip(
+                    message: "Logout",
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: logout,
+                        child: Container(
+                          width: 43,
+                          height: 43,
+                          decoration: BoxDecoration(
+                            color: const Color(0xfffff3f4),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: omanRed.withOpacity(0.08),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.logout_rounded,
+                            color: omanRed,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -294,16 +373,60 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ========================================================
+            // SMALL OMAN LINE
+            // ========================================================
+
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: omanRed,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+
+                const SizedBox(width: 4),
+
+                Container(
+                  width: 24,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: omanWhite,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                ),
+
+                const SizedBox(width: 4),
+
+                Container(
+                  width: 24,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: omanGreen,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
             Text(
               title,
               style: const TextStyle(
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
-                color: Color(0xff172033),
+                color: textColor,
                 letterSpacing: -0.7,
               ),
             ),
+
             const SizedBox(height: 7),
+
             Text(
               subtitle,
               style: TextStyle(
@@ -339,7 +462,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           title: "Generate Order",
           description: "Create pharmacy order Excel file",
           icon: Icons.inventory_2_outlined,
-          color: primaryColor,
+          color: omanRed,
           index: 0,
           animation: _animationController,
           onTap: () {
@@ -365,7 +488,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           title: "Drug Eye",
           description: "Search drug information",
           icon: Icons.medication_outlined,
-          color: const Color(0xff219653),
+          color: omanGreen,
           index: 1,
           animation: _animationController,
           onTap: () {
@@ -387,7 +510,12 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       //     index: 2,
       //     animation: _animationController,
       //     onTap: () {
-      //       Navigator.push(context, _buildPageRoute(const ImportDrugScreen()));
+      //       Navigator.push(
+      //         context,
+      //         _buildPageRoute(
+      //           const ImportDrugScreen(),
+      //         ),
+      //       );
       //     },
       //   ),
       // );
@@ -403,7 +531,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           title: "Inventory",
           description: "Manage warehouse stock",
           icon: Icons.warehouse_outlined,
-          color: const Color(0xffe58b18),
+          color: omanGreen,
           index: 0,
           animation: _animationController,
           onTap: () {
@@ -454,7 +582,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: omanGreen.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -463,7 +591,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   size: 19,
                 ),
               ),
+
               const SizedBox(width: 12),
+
               Expanded(
                 child: Text(
                   message,
@@ -533,6 +663,7 @@ class _MenuCardState extends State<MenuCard> {
         ).animate(cardAnimation),
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
+
           onEnter: (_) {
             if (!mounted) return;
 
@@ -540,6 +671,7 @@ class _MenuCardState extends State<MenuCard> {
               isHovered = true;
             });
           },
+
           onExit: (_) {
             if (!mounted) return;
 
@@ -547,22 +679,29 @@ class _MenuCardState extends State<MenuCard> {
               isHovered = false;
             });
           },
+
           child: GestureDetector(
             onTap: widget.onTap,
+
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
+
               width: 300,
               height: 150,
+
               transform: Matrix4.translationValues(0, isHovered ? -4 : 0, 0),
+
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
+
                 border: Border.all(
                   color: isHovered
-                      ? widget.color.withOpacity(0.18)
+                      ? widget.color.withOpacity(0.22)
                       : Colors.grey.shade200,
                 ),
+
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(isHovered ? 0.10 : 0.045),
@@ -571,20 +710,26 @@ class _MenuCardState extends State<MenuCard> {
                   ),
                 ],
               ),
+
               padding: const EdgeInsets.all(20),
+
               child: Row(
                 children: [
                   // ==================================================
                   // ICON
                   // ==================================================
+
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
+
                     width: 58,
                     height: 58,
+
                     decoration: BoxDecoration(
-                      color: widget.color.withOpacity(isHovered ? 0.16 : 0.10),
+                      color: widget.color.withOpacity(isHovered ? 0.15 : 0.09),
                       borderRadius: BorderRadius.circular(17),
                     ),
+
                     child: Icon(widget.icon, size: 29, color: widget.color),
                   ),
 
@@ -605,10 +750,12 @@ class _MenuCardState extends State<MenuCard> {
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xff172033),
+
                           ),
                         ),
+
                         const SizedBox(height: 6),
+
                         Text(
                           widget.description,
                           maxLines: 2,
@@ -630,14 +777,17 @@ class _MenuCardState extends State<MenuCard> {
                   // ==================================================
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
+
                     width: 32,
                     height: 32,
+
                     decoration: BoxDecoration(
                       color: isHovered
                           ? widget.color.withOpacity(0.10)
                           : Colors.transparent,
                       shape: BoxShape.circle,
                     ),
+
                     child: Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 13,

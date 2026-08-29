@@ -27,17 +27,20 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
-  // COLORS
+  // OMAN COLORS
   // ============================================================
 
-  static const Color primary = Color(0xff0050C0);
-  static const Color primaryDark = Color(0xff123F7A);
-  static const Color background = Color(0xffF5F7FB);
+  static const Color omanRed = Color(0xffC8102E);
+  static const Color omanGreen = Color(0xff009A44);
+  static const Color omanWhite = Colors.white;
+
+  static const Color background = Color(0xffF5F7F8);
   static const Color surface = Colors.white;
   static const Color textDark = Color(0xff172033);
   static const Color textMuted = Color(0xff6B7280);
-  static const Color success = Color(0xff16A34A);
-  static const Color danger = Color(0xffDC2626);
+
+  static const Color success = omanGreen;
+  static const Color danger = omanRed;
 
   static const double cardRadius = 15;
 
@@ -127,6 +130,7 @@ class _OrderScreenState extends State<OrderScreen> {
           content: Text(message),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
+          backgroundColor: textDark,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -863,38 +867,13 @@ class _OrderScreenState extends State<OrderScreen> {
       return const SizedBox.shrink();
     }
 
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.025),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.search_rounded,
-                  color: primary,
-                  size: 19,
-                ),
-              ),
+              _iconBox(Icons.search_rounded, omanRed),
 
               const SizedBox(width: 9),
 
@@ -919,21 +898,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
               ),
 
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  "${warehouseSearchResults.length}",
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: success,
-                  ),
-                ),
-              ),
+              _countBadge("${warehouseSearchResults.length}", omanGreen),
             ],
           ),
 
@@ -943,23 +908,14 @@ class _OrderScreenState extends State<OrderScreen> {
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: omanGreen,
+                ),
               ),
             )
           else if (warehouseSearchResults.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                "No items matched at 60% or higher.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textMuted, fontSize: 12),
-              ),
-            )
+            _emptyBox("No items matched at 60% or higher.")
           else
             ...warehouseSearchResults.map((result) => _buildMatchRow(result)),
         ],
@@ -983,7 +939,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: added ? Colors.green.shade50 : const Color(0xffF8FAFD),
         borderRadius: BorderRadius.circular(11),
-
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -993,13 +948,13 @@ class _OrderScreenState extends State<OrderScreen> {
             height: 34,
             decoration: BoxDecoration(
               color: added
-                  ? Colors.green.withOpacity(.10)
-                  : primary.withOpacity(.07),
+                  ? omanGreen.withOpacity(.10)
+                  : omanRed.withOpacity(.07),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Icon(
               added ? Icons.check_rounded : Icons.medication_outlined,
-              color: added ? success : primary,
+              color: added ? omanGreen : omanRed,
               size: 18,
             ),
           ),
@@ -1071,14 +1026,14 @@ class _OrderScreenState extends State<OrderScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: added
-                      ? Colors.green.withOpacity(.12)
-                      : primary.withOpacity(.08),
+                      ? omanGreen.withOpacity(.12)
+                      : omanRed.withOpacity(.08),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
                   "${score.toStringAsFixed(0)}%",
                   style: TextStyle(
-                    color: added ? success : primary,
+                    color: added ? omanGreen : omanRed,
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
                   ),
@@ -1105,7 +1060,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: added ? danger : success,
+                    backgroundColor: added ? omanRed : omanGreen,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -1128,18 +1083,16 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Widget buildDrugDetailsItemsCard() {
     if (loadingDrugDetailsItems) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
-        ),
+      return _card(
         child: const Row(
           children: [
             SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: omanGreen,
+              ),
             ),
             SizedBox(width: 10),
             Text("Loading Drug Details items..."),
@@ -1148,19 +1101,13 @@ class _OrderScreenState extends State<OrderScreen> {
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-
-      ),
+    return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.medication_rounded, color: primary, size: 20),
+              const Icon(Icons.medication_rounded, color: omanGreen, size: 20),
 
               const SizedBox(width: 8),
 
@@ -1170,26 +1117,12 @@ class _OrderScreenState extends State<OrderScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: primary,
+                    color: textDark,
                   ),
                 ),
               ),
 
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  "${drugDetailsItems.length}",
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: primary,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
+              _countBadge("${drugDetailsItems.length}", omanGreen),
             ],
           ),
 
@@ -1203,19 +1136,7 @@ class _OrderScreenState extends State<OrderScreen> {
           const SizedBox(height: 11),
 
           if (drugDetailsItems.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                "No Drug Details items added.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textMuted, fontSize: 12),
-              ),
-            )
+            _emptyBox("No Drug Details items added.")
           else
             ...drugDetailsItems.asMap().entries.map(
               (entry) => _buildDrugDetailsRow(entry.value, entry.key),
@@ -1234,8 +1155,8 @@ class _OrderScreenState extends State<OrderScreen> {
                   style: TextStyle(fontSize: 12),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: danger,
-                  side: BorderSide(color: Colors.red.shade200),
+                  foregroundColor: omanRed,
+                  side: BorderSide(color: omanRed.withOpacity(.25)),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(9),
                   ),
@@ -1271,7 +1192,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: const Color(0xffF8FAFD),
         borderRadius: BorderRadius.circular(10),
-
       ),
       child: Row(
         children: [
@@ -1279,14 +1199,14 @@ class _OrderScreenState extends State<OrderScreen> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: primary.withOpacity(.08),
+              color: omanGreen.withOpacity(.08),
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
                 "${index + 1}",
                 style: const TextStyle(
-                  color: primary,
+                  color: omanGreen,
                   fontWeight: FontWeight.bold,
                   fontSize: 11,
                 ),
@@ -1348,12 +1268,12 @@ class _OrderScreenState extends State<OrderScreen> {
 
               Text(
                 "${price.toStringAsFixed(3)} OMR",
-                style: const TextStyle(color: success, fontSize: 10),
+                style: const TextStyle(color: omanGreen, fontSize: 10),
               ),
 
               Text(
                 "${score.toStringAsFixed(0)}%",
-                style: const TextStyle(color: primary, fontSize: 10),
+                style: const TextStyle(color: omanRed, fontSize: 10),
               ),
             ],
           ),
@@ -1405,10 +1325,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final drugDetailsSheet = excel["Drug Details Items"];
 
-      // ========================================================
-      // RESULT HEADERS
-      // ========================================================
-
       resultSheet.appendRow([
         TextCellValue("Item"),
         TextCellValue("Qty"),
@@ -1418,10 +1334,6 @@ class _OrderScreenState extends State<OrderScreen> {
       ]);
 
       double totalSale = 0;
-
-      // ========================================================
-      // NORMAL MISSING ITEMS
-      // ========================================================
 
       final merged = buildMergedMissingItems();
 
@@ -1514,10 +1426,6 @@ class _OrderScreenState extends State<OrderScreen> {
         }
       }
 
-      // ========================================================
-      // MISSING SHEET
-      // ========================================================
-
       missingSheet.appendRow([
         TextCellValue("Item"),
         TextCellValue("Qty"),
@@ -1556,10 +1464,6 @@ class _OrderScreenState extends State<OrderScreen> {
         ]);
       }
 
-      // ========================================================
-      // TOTAL NORMAL ORDER
-      // ========================================================
-
       resultSheet.appendRow([]);
 
       resultSheet.appendRow([
@@ -1569,10 +1473,6 @@ class _OrderScreenState extends State<OrderScreen> {
         TextCellValue(""),
         TextCellValue(totalSale.toStringAsFixed(3)),
       ]);
-
-      // ========================================================
-      // SELECTED ITEMS SHEET
-      // ========================================================
 
       final selectedSheet = excel["Selected Items"];
 
@@ -1633,10 +1533,6 @@ class _OrderScreenState extends State<OrderScreen> {
         TextCellValue(selectedTotal.toStringAsFixed(3)),
       ]);
 
-      // ========================================================
-      // DRUG DETAILS ITEMS SHEET
-      // ========================================================
-
       drugDetailsSheet.appendRow([
         TextCellValue("Item"),
         TextCellValue("Qty"),
@@ -1691,10 +1587,6 @@ class _OrderScreenState extends State<OrderScreen> {
         ]);
       }
 
-      // ========================================================
-      // DRUG DETAILS TOTAL
-      // ========================================================
-
       drugDetailsSheet.appendRow([]);
 
       drugDetailsSheet.appendRow([
@@ -1709,10 +1601,6 @@ class _OrderScreenState extends State<OrderScreen> {
         TextCellValue(""),
         TextCellValue(""),
       ]);
-
-      // ========================================================
-      // ENCODE
-      // ========================================================
 
       final encoded = excel.encode();
 
@@ -1841,6 +1729,78 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
+  // UI HELPERS
+  // ============================================================
+
+  Widget _card({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.all(15),
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(cardRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.035),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _iconBox(IconData icon, Color color) {
+    return Container(
+      width: 37,
+      height: 37,
+      decoration: BoxDecoration(
+        color: color.withOpacity(.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(icon, color: color, size: 19),
+    );
+  }
+
+  Widget _countBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.08),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyBox(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xffF8FAFD),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: textMuted, fontSize: 12),
+      ),
+    );
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
@@ -1855,7 +1815,7 @@ class _OrderScreenState extends State<OrderScreen> {
         surfaceTintColor: Colors.white,
 
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: primary),
+          icon: const Icon(Icons.arrow_back_rounded, color: omanRed),
           onPressed: () => Navigator.pop(context),
         ),
 
@@ -1864,15 +1824,16 @@ class _OrderScreenState extends State<OrderScreen> {
         title: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 40,
+              height: 40,
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: primary.withOpacity(.08),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xfffff3f4),
+                borderRadius: BorderRadius.circular(11),
               ),
               child: const Icon(
                 Icons.inventory_2_rounded,
-                color: primary,
+                color: omanRed,
                 size: 21,
               ),
             ),
@@ -1883,16 +1844,22 @@ class _OrderScreenState extends State<OrderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Stock Gap",
+                  "Full Stock",
                   style: TextStyle(
                     color: textDark,
                     fontSize: 17,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+
                 Text(
                   "Order Generator",
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
+                  style: TextStyle(
+                    color: omanGreen,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .4,
+                  ),
                 ),
               ],
             ),
@@ -1902,7 +1869,7 @@ class _OrderScreenState extends State<OrderScreen> {
         actions: [
           IconButton(
             tooltip: "Order History",
-            icon: const Icon(Icons.history_rounded, color: primary),
+            icon: const Icon(Icons.history_rounded, color: omanGreen),
             onPressed: () {
               Navigator.push(
                 context,
@@ -1913,7 +1880,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
           IconButton(
             tooltip: "Logout",
-            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            icon: const Icon(Icons.logout_rounded, color: omanRed),
             onPressed: logout,
           ),
 
@@ -2012,17 +1979,14 @@ class _OrderScreenState extends State<OrderScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xff0050C0), Color(0xff1769D1)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(19),
+
         boxShadow: [
           BoxShadow(
-            color: primary.withOpacity(.14),
-            blurRadius: 18,
-            offset: const Offset(0, 7),
+            color: Colors.black.withOpacity(.045),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -2032,12 +1996,12 @@ class _OrderScreenState extends State<OrderScreen> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(.14),
+              color: const Color(0xfffff3f4),
               borderRadius: BorderRadius.circular(15),
             ),
             child: const Icon(
               Icons.shopping_cart_checkout_rounded,
-              color: Colors.white,
+              color: omanRed,
               size: 28,
             ),
           ),
@@ -2051,9 +2015,9 @@ class _OrderScreenState extends State<OrderScreen> {
                 Text(
                   "Create New Order",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: textDark,
                     fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
 
@@ -2062,7 +2026,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 Text(
                   "Upload missing items, choose a warehouse and generate your order.",
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: textMuted,
                     fontSize: 12,
                     height: 1.35,
                   ),
@@ -2071,32 +2035,7 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
           ),
 
-          if (itemCount > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(.14),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    "$itemCount",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          if (itemCount > 0) _countBadge("$itemCount", omanGreen),
         ],
       ),
     );
@@ -2117,20 +2056,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final step4 = generatedFileBytes != null;
 
-    return Container(
+    return _card(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.03),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
       child: Row(
         children: [
           _buildStepItem(number: "1", title: "Items", active: step1),
@@ -2164,12 +2091,12 @@ class _OrderScreenState extends State<OrderScreen> {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: active ? primary : const Color(0xffF1F4F8),
+              color: active ? omanGreen : const Color(0xffF1F4F8),
               shape: BoxShape.circle,
               boxShadow: active
                   ? [
                       BoxShadow(
-                        color: primary.withOpacity(.16),
+                        color: omanGreen.withOpacity(.16),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -2202,7 +2129,7 @@ class _OrderScreenState extends State<OrderScreen> {
             style: TextStyle(
               fontSize: 10,
               fontWeight: active ? FontWeight.bold : FontWeight.w500,
-              color: active ? primary : Colors.grey.shade600,
+              color: active ? omanGreen : Colors.grey.shade600,
             ),
           ),
         ],
@@ -2217,7 +2144,7 @@ class _OrderScreenState extends State<OrderScreen> {
         height: 2,
         margin: const EdgeInsets.only(bottom: 18),
         decoration: BoxDecoration(
-          color: active ? primary : Colors.grey.shade200,
+          color: active ? omanGreen : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(10),
         ),
       ),
@@ -2236,15 +2163,7 @@ class _OrderScreenState extends State<OrderScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 37,
-          height: 37,
-          decoration: BoxDecoration(
-            color: primary.withOpacity(.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: primary, size: 19),
-        ),
+        _iconBox(icon, omanRed),
 
         const SizedBox(width: 10),
 
@@ -2310,32 +2229,19 @@ class _OrderScreenState extends State<OrderScreen> {
     required String buttonText,
     required VoidCallback onPressed,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.025),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return _card(
       child: Row(
         children: [
           Container(
             width: 43,
             height: 43,
             decoration: BoxDecoration(
-              color: active ? Colors.green.shade50 : primary.withOpacity(.07),
+              color: active ? Colors.green.shade50 : omanRed.withOpacity(.07),
               borderRadius: BorderRadius.circular(11),
             ),
             child: Icon(
               active ? Icons.check_rounded : icon,
-              color: active ? success : primary,
+              color: active ? omanGreen : omanRed,
               size: 22,
             ),
           ),
@@ -2374,11 +2280,11 @@ class _OrderScreenState extends State<OrderScreen> {
           OutlinedButton(
             onPressed: onPressed,
             style: OutlinedButton.styleFrom(
-              foregroundColor: primary,
+              foregroundColor: omanRed,
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              side: BorderSide(color: primary.withOpacity(.22)),
+              side: BorderSide(color: omanRed.withOpacity(.22)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(9),
               ),
@@ -2400,32 +2306,19 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget _buildDrugDetailsCompactCard() {
     final count = drugDetailsItems.length;
 
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.025),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return _card(
       child: Row(
         children: [
           Container(
             width: 43,
             height: 43,
             decoration: BoxDecoration(
-              color: primary.withOpacity(.07),
+              color: omanGreen.withOpacity(.07),
               borderRadius: BorderRadius.circular(11),
             ),
             child: const Icon(
               Icons.medication_rounded,
-              color: primary,
+              color: omanGreen,
               size: 22,
             ),
           ),
@@ -2452,24 +2345,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
                     if (count > 0) ...[
                       const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: primary.withOpacity(.08),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "$count",
-                          style: const TextStyle(
-                            color: primary,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
+                      _countBadge("$count", omanGreen),
                     ],
                   ],
                 ),
@@ -2494,7 +2370,7 @@ class _OrderScreenState extends State<OrderScreen> {
               visualDensity: VisualDensity.compact,
               icon: const Icon(
                 Icons.delete_outline_rounded,
-                color: Colors.redAccent,
+                color: omanRed,
                 size: 19,
               ),
               onPressed: clearDrugDetailsItems,
@@ -2509,20 +2385,7 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildWarehouseCard() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.025),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return _card(
       child: Column(
         children: [
           Row(
@@ -2533,14 +2396,14 @@ class _OrderScreenState extends State<OrderScreen> {
                 decoration: BoxDecoration(
                   color: selectedWarehouseId != null
                       ? Colors.green.shade50
-                      : primary.withOpacity(.07),
+                      : omanGreen.withOpacity(.07),
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Icon(
                   selectedWarehouseId != null
                       ? Icons.check_rounded
                       : Icons.warehouse_rounded,
-                  color: selectedWarehouseId != null ? success : primary,
+                  color: selectedWarehouseId != null ? omanGreen : omanGreen,
                   size: 22,
                 ),
               ),
@@ -2569,24 +2432,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
 
               if (orderRows.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "${orderRows.length}",
-                    style: const TextStyle(
-                      color: success,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                _countBadge("${orderRows.length}", omanGreen),
             ],
           ),
 
@@ -2598,7 +2444,10 @@ class _OrderScreenState extends State<OrderScreen> {
                   child: SizedBox(
                     width: 22,
                     height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: omanGreen,
+                    ),
                   ),
                 )
               : DropdownButtonFormField<String>(
@@ -2607,10 +2456,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
                   decoration: InputDecoration(
                     labelText: "Warehouse",
-                    labelStyle: const TextStyle(fontSize: 12),
+                    labelStyle: const TextStyle(fontSize: 12, color: textMuted),
                     prefixIcon: const Icon(
                       Icons.warehouse_outlined,
-                      color: primary,
+                      color: omanGreen,
                       size: 19,
                     ),
                     filled: true,
@@ -2629,7 +2478,10 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: primary, width: 1.4),
+                      borderSide: const BorderSide(
+                        color: omanGreen,
+                        width: 1.4,
+                      ),
                     ),
                   ),
 
@@ -2703,25 +2555,12 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: const Color(0xffF8FAFD),
         borderRadius: BorderRadius.circular(14),
-
       ),
       child: Column(
         children: [
           Row(
             children: [
-              Container(
-                width: 33,
-                height: 33,
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.info_outline_rounded,
-                  color: primary,
-                  size: 18,
-                ),
-              ),
+              _iconBox(Icons.info_outline_rounded, omanGreen),
 
               const SizedBox(width: 8),
 
@@ -2737,24 +2576,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
 
               if (orderRows.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "${orderRows.length} items",
-                    style: const TextStyle(
-                      color: success,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                _countBadge("${orderRows.length} items", omanGreen),
             ],
           ),
 
@@ -2788,9 +2610,9 @@ class _OrderScreenState extends State<OrderScreen> {
                   style: TextStyle(fontSize: 11),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.green,
+                  foregroundColor: omanGreen,
                   backgroundColor: Colors.white,
-                  side: BorderSide(color: Colors.green.shade200),
+                  side: BorderSide(color: omanGreen.withOpacity(.25)),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 11,
                     vertical: 7,
@@ -2819,12 +2641,11 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(9),
-
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: primary),
+          Icon(icon, size: 14, color: omanGreen),
 
           const SizedBox(width: 5),
 
@@ -2851,7 +2672,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(7),
-
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2876,7 +2696,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         borderRadius: BorderRadius.circular(13),
-
       ),
       child: Row(
         children: [
@@ -2887,7 +2706,7 @@ class _OrderScreenState extends State<OrderScreen> {
               color: Colors.green.shade100,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_rounded, color: success, size: 20),
+            child: const Icon(Icons.check_rounded, color: omanGreen, size: 20),
           ),
 
           const SizedBox(width: 10),
@@ -2900,7 +2719,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   "Selected Items",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: success,
+                    color: omanGreen,
                     fontSize: 12,
                   ),
                 ),
@@ -2920,7 +2739,7 @@ class _OrderScreenState extends State<OrderScreen> {
             style: const TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.bold,
-              color: success,
+              color: omanGreen,
             ),
           ),
         ],
@@ -2938,37 +2757,12 @@ class _OrderScreenState extends State<OrderScreen> {
         !isGenerating &&
         (orderRows.isNotEmpty || drugDetailsItems.isNotEmpty);
 
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(.03),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+    return _card(
       child: Column(
         children: [
           Row(
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.file_download_outlined,
-                  color: primary,
-                  size: 20,
-                ),
-              ),
+              _iconBox(Icons.file_download_outlined, omanRed),
 
               const SizedBox(width: 9),
 
@@ -3020,7 +2814,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: success,
+                backgroundColor: omanGreen,
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: Colors.grey.shade300,
                 disabledForegroundColor: Colors.grey.shade600,
@@ -3048,8 +2842,8 @@ class _OrderScreenState extends State<OrderScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: primary,
-                  side: const BorderSide(color: primary),
+                  foregroundColor: omanRed,
+                  side: const BorderSide(color: omanRed),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(11),
                   ),
@@ -3074,16 +2868,16 @@ class _OrderScreenState extends State<OrderScreen> {
         statusText.toLowerCase().contains("error");
 
     final color = isSuccess
-        ? success
+        ? omanGreen
         : isError
-        ? Colors.redAccent
-        : primary;
+        ? omanRed
+        : omanRed;
 
     final background = isSuccess
         ? Colors.green.shade50
         : isError
         ? Colors.red.shade50
-        : Colors.blue.shade50;
+        : const Color(0xfffff3f4);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
@@ -3092,7 +2886,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(11),
-
       ),
       child: Row(
         children: [
