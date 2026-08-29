@@ -21,12 +21,12 @@ class DrugService {
 
     final box = Hive.box("drugs");
 
-    // ==========================
     // Load from local cache
-    // ==========================
     if (box.isNotEmpty) {
       _allDrugs = box.values.map((e) {
-        return DrugModel.fromLocal(Map<String, dynamic>.from(e));
+        return DrugModel.fromLocal(
+          Map<String, dynamic>.from(e),
+        );
       }).toList();
 
       _loaded = true;
@@ -36,18 +36,14 @@ class DrugService {
       return _allDrugs;
     }
 
-    // ==========================
     // First time Firebase
-    // ==========================
     final snapshot = await _db.collection("drugs").get();
 
     _allDrugs = snapshot.docs
         .map((e) => DrugModel.fromMap(e.id, e.data()))
         .toList();
 
-    // ==========================
     // Save to Hive
-    // ==========================
     await box.clear();
 
     for (final drug in _allDrugs) {
