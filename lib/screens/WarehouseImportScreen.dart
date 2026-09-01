@@ -19,9 +19,43 @@ class WarehouseImportScreen extends StatefulWidget {
 }
 
 class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
+  // ============================================================
+  // OMAN COLORS
+  // ============================================================
+
+  static const Color omanRed = Color(0xffC8102E);
+  static const Color omanGreen = Color(0xff00843D);
+  static const Color omanWhite = Color(0xffFFFFFF);
+
+  static const Color pageBackground = Color(0xffF5F7F8);
+  static const Color textDark = Color(0xff202124);
+  static const Color textGrey = Color(0xff6B7280);
+
+  // ============================================================
+  // SETTINGS
+  // ============================================================
+
+  static const int batchSize = 400;
+
+  // ============================================================
+  // STATE
+  // ============================================================
+
   bool uploading = false;
 
   String status = "";
+
+  String currentStage = "";
+
+  int processedItems = 0;
+
+  int totalItems = 0;
+
+  int currentBatch = 0;
+
+  int totalBatches = 0;
+
+  double progress = 0;
 
   // ============================================================
   // READ EXCEL
@@ -121,24 +155,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
   Future<List<List<String>>> convertPdfToRows(String pdfPath) async {
     if (!Platform.isWindows) {
       throw Exception(
-        "PDF conversion using Tabula is currently configured for Windows.",
+        "PDF conversion using Tabula is currently "
+        "configured for Windows.",
       );
     }
-
-    // ============================================================
-    // IMPORTANT
-    //
-    // نفس طريقة الـ EXE:
-    //
-    // app/
-    //   stockgap2026.exe
-    //   tools/
-    //      tabula.jar
-    //   jre/
-    //      bin/
-    //         java.exe
-    //
-    // ============================================================
 
     final exeDir = File(Platform.resolvedExecutable).parent.path;
 
@@ -185,7 +205,9 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       }
 
       setState(() {
+        currentStage = "Converting PDF...";
         status = "Converting PDF...";
+        progress = 0;
       });
 
       debugPrint("=================================");
@@ -343,10 +365,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       "product description",
     ];
 
-    // ----------------------------------------------------------
-    // EXACT
-    // ----------------------------------------------------------
-
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
@@ -354,10 +372,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         return i;
       }
     }
-
-    // ----------------------------------------------------------
-    // PARTIAL
-    // ----------------------------------------------------------
 
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
@@ -368,10 +382,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         return i;
       }
     }
-
-    // ----------------------------------------------------------
-    // DEFAULT
-    // ----------------------------------------------------------
 
     return 0;
   }
@@ -400,19 +410,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
   }
 
   // ============================================================
-  // EXTRACT ITEM + PRICE
-  //
-  // IMPORTANT:
-  //
-  // NO QTY
-  //
-  // Result:
-  //
-  // {
-  //   name: "...",
-  //   price: 3.300
-  // }
-  //
+  // EXTRACT ITEMS
   // ============================================================
 
   List<Map<String, dynamic>> extractItems(List<List<String>> rows) {
@@ -441,10 +439,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
     int skipped = 0;
 
-    // ==========================================================
-    // READ ROWS
-    // ==========================================================
-
     for (int i = headerIndex + 1; i < rows.length; i++) {
       final row = rows[i];
 
@@ -464,8 +458,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       }
 
       // --------------------------------------------------------
-      // FALLBACK:
-      // SEARCH FIRST NON-NUMERIC CELL
+      // FALLBACK NAME
       // --------------------------------------------------------
 
       if (name.isEmpty) {
@@ -514,7 +507,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       double? price;
 
       // --------------------------------------------------------
-      // 1. SEARCH KNOWN PRICE COLUMNS
+      // KNOWN PRICE COLUMNS
       // --------------------------------------------------------
 
       for (final column in priceColumns) {
@@ -534,8 +527,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       }
 
       // --------------------------------------------------------
-      // 2. FALLBACK:
-      // SEARCH ALL COLUMNS
+      // FALLBACK PRICE
       // --------------------------------------------------------
 
       if (price == null) {
@@ -628,13 +620,20 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       }
 
       setState(() {
+        currentStage = "Removing old inventory...";
+
         status =
-            "Deleting old inventory...\n"
+            "Removing old inventory...\n"
             "$deleted old items deleted";
+
+        processedItems = deleted;
       });
     }
 
-    debugPrint("OLD INVENTORY DELETE FINISHED: $deleted");
+    debugPrint(
+      "OLD INVENTORY DELETE FINISHED: "
+      "$deleted",
+    );
   }
 
   // ============================================================
@@ -673,7 +672,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       debugPrint("");
       debugPrint("=================================");
-      debugPrint("WAREHOUSE INVENTORY UPLOAD STARTED");
+      debugPrint(
+        "WAREHOUSE INVENTORY "
+        "UPLOAD STARTED",
+      );
       debugPrint("FILE NAME: ${file.name}");
       debugPrint("FILE PATH: $filePath");
       debugPrint("FILE EXTENSION: $extension");
@@ -686,7 +688,20 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       setState(() {
         uploading = true;
+
+        currentStage = "Reading file...";
+
         status = "Reading file...";
+
+        progress = 0;
+
+        processedItems = 0;
+
+        totalItems = 0;
+
+        currentBatch = 0;
+
+        totalBatches = 0;
       });
 
       // ========================================================
@@ -706,6 +721,16 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       // CSV
       // ========================================================
       else if (extension == "csv") {
+        if (mounted) {
+          setState(() {
+            currentStage = "Reading CSV...";
+
+            status = "Reading CSV...";
+
+            progress = 0;
+          });
+        }
+
         final csvText = await File(filePath).readAsString(encoding: utf8);
 
         rows = readCsv(csvText);
@@ -724,13 +749,15 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
           throw Exception("Could not read Excel file.");
         }
 
-        if (!mounted) {
-          return;
-        }
+        if (mounted) {
+          setState(() {
+            currentStage = "Reading Excel...";
 
-        setState(() {
-          status = "Reading Excel...";
-        });
+            status = "Reading Excel...";
+
+            progress = 0;
+          });
+        }
 
         rows = await readExcel(bytes);
       }
@@ -757,16 +784,18 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       }
 
       // ========================================================
-      // EXTRACT ITEM + PRICE
+      // EXTRACT
       // ========================================================
 
-      if (!mounted) {
-        return;
-      }
+      if (mounted) {
+        setState(() {
+          currentStage = "Detecting item names and prices...";
 
-      setState(() {
-        status = "Detecting item names and prices...";
-      });
+          status = "Detecting item names and prices...";
+
+          progress = 0;
+        });
+      }
 
       final items = extractItems(rows);
 
@@ -777,23 +806,18 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       if (items.isEmpty) {
         throw Exception(
           "No valid items found.\n\n"
-          "The file must contain an item name and a price.",
+          "The file must contain an item "
+          "name and a price.",
         );
       }
-
-      // ========================================================
-      // EXTRA SAFETY
-      //
-      // Do not delete Firebase inventory
-      // if extraction clearly failed.
-      // ========================================================
 
       if (rows.length > 100 && items.length < 10) {
         throw Exception(
           "Extraction failed.\n\n"
           "Rows extracted: ${rows.length}\n"
           "Valid items: ${items.length}\n\n"
-          "Old Firebase inventory was NOT deleted.",
+          "Old Firebase inventory "
+          "was NOT deleted.",
         );
       }
 
@@ -808,7 +832,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       final inventoryRef = storeRef.collection("inventory");
 
       debugPrint("=================================");
-      debugPrint("FIREBASE STORE: ${widget.storeCode}");
+      debugPrint(
+        "FIREBASE STORE: "
+        "${widget.storeCode}",
+      );
       debugPrint(
         "FIREBASE PATH: "
         "stores/${widget.storeCode}/inventory",
@@ -820,13 +847,23 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       // DELETE OLD INVENTORY
       // ========================================================
 
-      if (!mounted) {
-        return;
-      }
+      if (mounted) {
+        setState(() {
+          currentStage = "Removing old inventory...";
 
-      setState(() {
-        status = "Removing old inventory...";
-      });
+          status = "Removing old inventory...";
+
+          progress = 0;
+
+          processedItems = 0;
+
+          totalItems = 0;
+
+          currentBatch = 0;
+
+          totalBatches = 0;
+        });
+      }
 
       await deleteOldInventory(db, inventoryRef);
 
@@ -840,25 +877,16 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       WriteBatch batch = db.batch();
 
+      totalItems = items.length;
+
+      totalBatches = (items.length / batchSize).ceil();
+
       for (final item in items) {
         final name = item["name"].toString();
 
         final price = item["price"];
 
         final docRef = inventoryRef.doc();
-
-        // ======================================================
-        // SAME CONCEPT
-        //
-        // name
-        // original
-        // normalized
-        // price
-        // active
-        // updatedAt
-        //
-        // NO QTY
-        // ======================================================
 
         batch.set(docRef, {
           "name": name,
@@ -875,7 +903,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         // COMMIT EVERY 400
         // ======================================================
 
-        if (uploaded % 400 == 0) {
+        if (uploaded % batchSize == 0) {
           batchNumber++;
 
           debugPrint("=================================");
@@ -888,9 +916,21 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
           if (mounted) {
             setState(() {
+              currentStage = "Uploading inventory...";
+
               status =
                   "Uploading inventory...\n"
                   "$uploaded / ${items.length}";
+
+              processedItems = uploaded;
+
+              totalItems = items.length;
+
+              currentBatch = batchNumber;
+
+              totalBatches = (items.length / batchSize).ceil();
+
+              progress = (uploaded / items.length).clamp(0.0, 1.0);
             });
           }
 
@@ -905,9 +945,21 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         } else {
           if (mounted && (uploaded % 20 == 0 || uploaded == items.length)) {
             setState(() {
+              currentStage = "Uploading inventory...";
+
               status =
                   "Uploading inventory...\n"
                   "$uploaded / ${items.length}";
+
+              processedItems = uploaded;
+
+              totalItems = items.length;
+
+              currentBatch = (uploaded / batchSize).ceil();
+
+              totalBatches = (items.length / batchSize).ceil();
+
+              progress = (uploaded / items.length).clamp(0.0, 1.0);
             });
           }
         }
@@ -917,7 +969,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       // COMMIT REMAINING
       // ========================================================
 
-      if (uploaded % 400 != 0) {
+      if (uploaded % batchSize != 0) {
         batchNumber++;
 
         debugPrint("=================================");
@@ -940,6 +992,16 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       // SAVE STORE INFO
       // ========================================================
 
+      if (mounted) {
+        setState(() {
+          currentStage = "Updating store information...";
+
+          status = "Updating store information...";
+
+          progress = 0.97;
+        });
+      }
+
       await storeRef.set({
         "inventoryCount": items.length,
         "inventoryUpdatedAt": FieldValue.serverTimestamp(),
@@ -955,7 +1017,11 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       if (mounted) {
         setState(() {
+          currentStage = "Verifying inventory...";
+
           status = "Verifying Firebase inventory...";
+
+          progress = 0.99;
         });
       }
 
@@ -987,23 +1053,34 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         setState(() {
           uploading = false;
 
+          currentStage = "Verification failed";
+
           status =
-              "Upload completed but verification failed.\n\n"
+              "Upload completed but "
+              "verification failed.\n\n"
               "Expected: ${items.length}\n"
               "Firebase: "
               "${verifySnapshot.docs.length}";
+
+          progress = 0.99;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "تم الرفع ولكن العدد غير مطابق.\n"
+              "تم الرفع ولكن العدد "
+              "غير مطابق.\n"
               "المطلوب: ${items.length} | "
               "الموجود: "
               "${verifySnapshot.docs.length}",
             ),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 7),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(12),
           ),
         );
 
@@ -1016,6 +1093,16 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       setState(() {
         uploading = false;
+
+        currentStage = "Inventory uploaded successfully ✔";
+
+        processedItems = items.length;
+
+        totalItems = items.length;
+
+        currentBatch = totalBatches;
+
+        progress = 1.0;
 
         status =
             "Inventory uploaded successfully ✔\n\n"
@@ -1035,7 +1122,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         "FIREBASE PATH: "
         "stores/${widget.storeCode}/inventory",
       );
-      debugPrint("FIELDS: name + price + normalized");
+      debugPrint(
+        "FIELDS: "
+        "name + original + normalized + price",
+      );
       debugPrint("QTY FIELD: NOT STORED");
       debugPrint("=================================");
       debugPrint("");
@@ -1046,8 +1136,13 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
             "تم تحديث مخزون المخزن بنجاح ✔\n"
             "عدد الأصناف: ${items.length}",
           ),
-          backgroundColor: Colors.green,
+          backgroundColor: omanGreen,
           duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(12),
         ),
       );
     } catch (e, stackTrace) {
@@ -1070,123 +1165,518 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       setState(() {
         uploading = false;
 
+        currentStage = "Upload failed";
+
         status = "Upload failed:\n$e";
+
+        progress = 0;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("حدث خطأ أثناء رفع المخزون:\n$e"),
-          backgroundColor: Colors.red,
+          content: Text(
+            "حدث خطأ أثناء رفع المخزون:\n"
+            "$e",
+          ),
+          backgroundColor: omanRed,
           duration: const Duration(seconds: 8),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.all(12),
         ),
       );
     }
   }
 
   // ============================================================
-  // UI
+  // PROGRESS CARD
+  // ============================================================
+
+  Widget _buildProgressCard() {
+    final percent = (progress * 100).round();
+
+    return Card(
+      elevation: 1.5,
+      color: omanWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: (uploading ? omanRed : omanGreen).withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    uploading
+                        ? Icons.cloud_upload_rounded
+                        : Icons.check_circle_rounded,
+                    color: uploading ? omanRed : omanGreen,
+                    size: 25,
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: Text(
+                    currentStage.isEmpty ? status : currentStage,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                Text(
+                  "$percent%",
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: omanRed,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 18),
+
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                minHeight: 11,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: const AlwaysStoppedAnimation<Color>(omanRed),
+              ),
+            ),
+
+            const SizedBox(height: 13),
+
+            if (totalItems > 0)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "$processedItems / "
+                    "$totalItems",
+                    style: const TextStyle(
+                      color: textGrey,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+
+                  if (totalBatches > 0)
+                    Text(
+                      "Batch "
+                      "$currentBatch / "
+                      "$totalBatches",
+                      style: const TextStyle(color: textGrey, fontSize: 12),
+                    ),
+                ],
+              ),
+
+            if (status.isNotEmpty) ...[
+              const SizedBox(height: 10),
+
+              Text(
+                status,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: omanGreen,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // IMPORT CARD
+  // ============================================================
+
+  Widget _buildImportCard() {
+    return Card(
+      elevation: 1.5,
+      color: omanWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: omanRed.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                uploading ? Icons.sync_rounded : Icons.upload_file_rounded,
+                size: 30,
+                color: uploading ? omanGreen : omanRed,
+              ),
+            ),
+
+            const SizedBox(width: 14),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    "Import Warehouse",
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
+                  ),
+
+                  SizedBox(height: 6),
+
+                  Text(
+                    "PDF / Excel / CSV",
+                    style: TextStyle(color: textGrey, fontSize: 12),
+                  ),
+
+                  SizedBox(height: 5),
+
+                  Text(
+                    "Item Name + Price",
+                    style: TextStyle(
+                      color: omanGreen,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 10),
+
+            ElevatedButton(
+              onPressed: uploading ? null : importInventory,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: omanRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 17,
+                  vertical: 13,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(uploading ? "Uploading..." : "Import"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FIREBASE INFO CARD
+  // ============================================================
+
+  Widget _buildInfoCard() {
+    return Card(
+      elevation: 1.5,
+      color: omanWhite,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: omanGreen.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+
+              ),
+              child: const Icon(
+                Icons.cloud_done_rounded,
+                size: 30,
+                color: omanGreen,
+              ),
+            ),
+
+            const SizedBox(width: 14),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Firebase Inventory",
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  Text(
+                    "Store: ${widget.storeCode}",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: textGrey, fontSize: 12),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  const Text(
+                    "Name + Original + Normalized + Price",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: omanGreen,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Import Warehouse Inventory")),
+      backgroundColor: pageBackground,
 
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(30),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.inventory_2,
-                    size: 80,
-                    color: Color(0xff0050c0),
-                  ),
+      // ========================================================
+      // APP BAR
+      // ========================================================
+      appBar: AppBar(
+        backgroundColor: omanRed,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          "Warehouse Inventory",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      ),
 
-                  const SizedBox(height: 30),
+      body: Column(
+        children: [
+          // ======================================================
+          // OMAN HEADER STRIPE
+          // ======================================================
 
-                  const Text(
-                    "Warehouse Inventory",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+          Container(height: 5, color: omanGreen),
 
-                  const SizedBox(height: 10),
+          // ======================================================
+          // BODY
+          // ======================================================
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
 
-                  const Text(
-                    "PDF / Excel → Item Name + Price → Firebase",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1000),
 
-                  const SizedBox(height: 10),
+                  child: Column(
+                    children: [
+                      // ==================================================
+                      // HEADER
+                      // ==================================================
 
-                  Text(
-                    "Store: ${widget.storeCode}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xff0050c0),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton.icon(
-                      onPressed: uploading ? null : importInventory,
-
-                      icon: uploading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(Icons.upload_file),
-
-                      label: Text(
-                        uploading ? "Uploading..." : "Upload PDF / Excel",
-                      ),
-
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xff0050c0),
-                        foregroundColor: Colors.white,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  if (status.isNotEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.grey.shade100,
-                      ),
-                      child: Text(
-                        status,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xff0050c0),
-                          fontSize: 16,
+                      Container(
+                        width: 82,
+                        height: 82,
+                        decoration: BoxDecoration(
+                          color: omanRed.withOpacity(0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2_rounded,
+                          size: 43,
+                          color: omanRed,
                         ),
                       ),
-                    ),
-                ],
+
+                      const SizedBox(height: 14),
+
+                      const Text(
+                        "Warehouse Inventory",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 27,
+                          fontWeight: FontWeight.bold,
+                          color: textDark,
+                        ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      const Text(
+                        "Import warehouse inventory "
+                        "from PDF, Excel or CSV",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: textGrey, fontSize: 13),
+                      ),
+
+                      const SizedBox(height: 7),
+
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: omanGreen.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          "Store: ${widget.storeCode}",
+                          style: const TextStyle(
+                            color: omanGreen,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // ==================================================
+                      // CARDS
+                      // ==================================================
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final small = constraints.maxWidth < 750;
+
+                          final importCard = _buildImportCard();
+
+                          final infoCard = _buildInfoCard();
+
+                          if (!small) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: importCard),
+
+                                const SizedBox(width: 20),
+
+                                Expanded(child: infoCard),
+                              ],
+                            );
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              importCard,
+
+                              const SizedBox(height: 14),
+
+                              infoCard,
+                            ],
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // ==================================================
+                      // PROGRESS
+                      // ==================================================
+                      if (uploading || status.isNotEmpty) _buildProgressCard(),
+
+                      const SizedBox(height: 20),
+
+                      // ==================================================
+                      // FIREBASE PATH
+                      // ==================================================
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.account_tree_outlined,
+                              size: 18,
+                              color: omanGreen,
+                            ),
+
+                            const SizedBox(width: 8),
+
+                            Expanded(
+                              child: Text(
+                                "stores/"
+                                "${widget.storeCode}"
+                                "/inventory",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: textGrey,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

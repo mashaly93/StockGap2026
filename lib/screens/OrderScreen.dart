@@ -1,12 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:convert';
 
-import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,7 +27,7 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
-  // OMAN COLORS
+  // COLORS
   // ============================================================
 
   static const Color omanRed = Color(0xffC8102E);
@@ -65,6 +65,8 @@ class _OrderScreenState extends State<OrderScreen> {
   Uint8List? generatedFileBytes;
 
   bool isGenerating = false;
+  bool isSavingFile = false;
+
 
   String? inventoryFileName;
 
@@ -91,13 +93,13 @@ class _OrderScreenState extends State<OrderScreen> {
   bool searchingWarehouse = false;
 
   // ============================================================
-  // SELECTED MATCHING ITEMS
+  // SELECTED ITEMS
   // ============================================================
 
   final List<Map<String, dynamic>> selectedItems = [];
 
   // ============================================================
-  // DRUG DETAILS ITEMS
+  // DRUG DETAILS
   // ============================================================
 
   List<Map<String, dynamic>> drugDetailsItems = [];
@@ -259,7 +261,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // DELETE DRUG DETAILS ITEMS
+  // CLEAR DRUG DETAILS
   // ============================================================
 
   Future<void> clearDrugDetailsItems() async {
@@ -328,6 +330,7 @@ class _OrderScreenState extends State<OrderScreen> {
       orderRows.clear();
       warehouseSearchResults.clear();
       selectedItems.clear();
+      generatedFileBytes = null;
       statusText = "Loading warehouse inventory...";
     });
 
@@ -419,14 +422,20 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final file = await openFile(acceptedTypeGroups: [type]);
 
-      if (file == null) return;
+      if (file == null) {
+        return;
+      }
 
       final bytes = await File(file.path).readAsBytes();
+
+      if (bytes.isEmpty) {
+        throw Exception("Selected Excel file is empty.");
+      }
 
       final rows = excelToRows(bytes);
 
       if (rows.length <= 1) {
-        throw Exception("Excel file is empty.");
+        throw Exception("Excel file is empty or contains no data rows.");
       }
 
       if (!mounted) return;
@@ -772,8 +781,9 @@ class _OrderScreenState extends State<OrderScreen> {
 
         if (bestWarehouseRow.length >= 4) {
           sale =
-              double.tryParse(bestWarehouseRow[3].replaceAll(",", "").trim()) ??
-              0;
+              double.tryParse(
+                bestWarehouseRow[3].replaceAll(",", "").trim(),
+              ) ?? 0;
         }
 
         results.add({
@@ -819,7 +829,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // ADD SELECTED ITEM
+  // ADD SELECTED
   // ============================================================
 
   void addSelectedItem(Map<String, dynamic> result) {
@@ -843,7 +853,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // REMOVE SELECTED ITEM
+  // REMOVE SELECTED
   // ============================================================
 
   void removeSelectedItem(Map<String, dynamic> result) {
@@ -874,9 +884,7 @@ class _OrderScreenState extends State<OrderScreen> {
           Row(
             children: [
               _iconBox(Icons.search_rounded, omanRed),
-
               const SizedBox(width: 9),
-
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -897,13 +905,10 @@ class _OrderScreenState extends State<OrderScreen> {
                   ],
                 ),
               ),
-
               _countBadge("${warehouseSearchResults.length}", omanGreen),
             ],
           ),
-
           const SizedBox(height: 13),
-
           if (searchingWarehouse)
             const Center(
               child: Padding(
@@ -958,9 +963,7 @@ class _OrderScreenState extends State<OrderScreen> {
               size: 18,
             ),
           ),
-
           const SizedBox(width: 10),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -975,9 +978,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     color: textDark,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Row(
                   children: [
                     Icon(
@@ -996,9 +997,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 6),
-
                 Wrap(
                   spacing: 6,
                   runSpacing: 5,
@@ -1016,9 +1015,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           const SizedBox(width: 9),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -1039,9 +1036,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 6),
-
               SizedBox(
                 height: 32,
                 child: ElevatedButton.icon(
@@ -1108,9 +1103,7 @@ class _OrderScreenState extends State<OrderScreen> {
           Row(
             children: [
               const Icon(Icons.medication_rounded, color: omanGreen, size: 20),
-
               const SizedBox(width: 8),
-
               const Expanded(
                 child: Text(
                   "Drug Details Items",
@@ -1121,27 +1114,21 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
               ),
-
               _countBadge("${drugDetailsItems.length}", omanGreen),
             ],
           ),
-
           const SizedBox(height: 10),
-
           const Text(
             "These items come from Drug Details and will be placed in a separate Excel sheet.",
             style: TextStyle(color: textMuted, fontSize: 11),
           ),
-
           const SizedBox(height: 11),
-
           if (drugDetailsItems.isEmpty)
             _emptyBox("No Drug Details items added.")
           else
             ...drugDetailsItems.asMap().entries.map(
               (entry) => _buildDrugDetailsRow(entry.value, entry.key),
             ),
-
           if (drugDetailsItems.isNotEmpty) ...[
             const SizedBox(height: 7),
             SizedBox(
@@ -1213,9 +1200,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ),
           ),
-
           const SizedBox(width: 9),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1229,9 +1214,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     fontSize: 12,
                   ),
                 ),
-
                 const SizedBox(height: 3),
-
                 if (warehouse.isNotEmpty)
                   Text(
                     "Warehouse: $warehouse",
@@ -1239,7 +1222,6 @@ class _OrderScreenState extends State<OrderScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 10, color: textMuted),
                   ),
-
                 if (matched.isNotEmpty)
                   Text(
                     "Matched: $matched",
@@ -1250,9 +1232,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -1263,14 +1243,11 @@ class _OrderScreenState extends State<OrderScreen> {
                   fontSize: 11,
                 ),
               ),
-
               const SizedBox(height: 2),
-
               Text(
                 "${price.toStringAsFixed(3)} OMR",
                 style: const TextStyle(color: omanGreen, fontSize: 10),
               ),
-
               Text(
                 "${score.toStringAsFixed(0)}%",
                 style: const TextStyle(color: omanRed, fontSize: 10),
@@ -1283,54 +1260,129 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
+  // SAFE NUMBER
+  // ============================================================
+
+  double _toDouble(dynamic value) {
+    if (value == null) {
+      return 0;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value.toString().replaceAll(",", "").trim()) ?? 0;
+  }
+
+  int _toInt(dynamic value) {
+    if (value == null) {
+      return 0;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value.toString().replaceAll(",", "").trim()) ?? 0;
+  }
+
+  // ============================================================
+  // ADD EXCEL ROW SAFELY
+  // ============================================================
+
+  void _appendExcelRow(Sheet sheet, List<String> values) {
+    sheet.appendRow(values.map((value) => TextCellValue(value)).toList());
+  }
+
+  // ============================================================
   // GENERATE ORDER
   // ============================================================
 
   Future<void> generateOrder() async {
+    if (isGenerating) {
+      return;
+    }
+
     if (inventoryRows.isEmpty && drugDetailsItems.isEmpty) {
-      setState(() {
-        statusText =
-            "Please upload Missing Items or add items from Drug Details.";
-      });
+      if (mounted) {
+        setState(() {
+          statusText =
+              "Please upload Missing Items or add items from Drug Details.";
+        });
+      }
 
       return;
     }
 
     if (orderRows.isEmpty && drugDetailsItems.isEmpty) {
-      setState(() {
-        statusText = "Please select a Warehouse first.";
-      });
+      if (mounted) {
+        setState(() {
+          statusText = "Please select a Warehouse first.";
+        });
+      }
 
       return;
     }
-
-    if (isGenerating) return;
-
-    await loadDrugDetailsItems();
 
     if (!mounted) return;
 
     setState(() {
       isGenerating = true;
-      statusText = "Generating order...";
+      statusText = "Preparing Excel file...";
       generatedFileBytes = null;
     });
 
     try {
+      // ----------------------------------------------------------
+      // LOAD LATEST DRUG DETAILS
+      // ----------------------------------------------------------
+
+      await loadDrugDetailsItems();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        statusText = "Creating Excel workbook...";
+      });
+
+      // ----------------------------------------------------------
+      // CREATE EXCEL
+      // ----------------------------------------------------------
+
       final excel = Excel.createExcel();
 
-      final resultSheet = excel["Sheet1"];
+// Rename the default sheet instead of creating a new one.
+// This prevents an empty Sheet1 from remaining in the workbook.
+      excel.rename("Sheet1", "Order");
 
+// Sheet 1
+      final resultSheet = excel["Order"];
+      // Missing
       final missingSheet = excel["Missing"];
 
+      // Selected
+      final selectedSheet = excel["Selected Items"];
+
+      // Drug Details
       final drugDetailsSheet = excel["Drug Details Items"];
 
-      resultSheet.appendRow([
-        TextCellValue("Item"),
-        TextCellValue("Qty"),
-        TextCellValue("Matched Item"),
-        TextCellValue("Purchase Price"),
-        TextCellValue("Total"),
+      // ----------------------------------------------------------
+      // RESULT SHEET
+      // ----------------------------------------------------------
+
+      _appendExcelRow(resultSheet, [
+        "Item",
+        "Qty",
+        "Matched Item",
+        "Purchase Price",
+        "Total",
       ]);
 
       double totalSale = 0;
@@ -1343,10 +1395,14 @@ class _OrderScreenState extends State<OrderScreen> {
 
       int processed = 0;
 
-      for (final data in merged.values) {
-        final item = data["item"].toString();
+      // ----------------------------------------------------------
+      // PROCESS MISSING ITEMS
+      // ----------------------------------------------------------
 
-        final qty = data["qty"] as int;
+      for (final data in merged.values) {
+        final item = data["item"]?.toString() ?? "";
+
+        final qty = _toInt(data["qty"]);
 
         double bestScore = 0;
 
@@ -1379,27 +1435,23 @@ class _OrderScreenState extends State<OrderScreen> {
           double sale = 0;
 
           if (bestWarehouse.length >= 3) {
-            purchase =
-                double.tryParse(bestWarehouse[2].replaceAll(",", "").trim()) ??
-                0;
+            purchase = _toDouble(bestWarehouse[2]);
           }
 
           if (bestWarehouse.length >= 4) {
-            sale =
-                double.tryParse(bestWarehouse[3].replaceAll(",", "").trim()) ??
-                0;
+            sale = _toDouble(bestWarehouse[3]);
           }
 
           final total = sale * qty;
 
           totalSale += total;
 
-          resultSheet.appendRow([
-            TextCellValue(item),
-            TextCellValue(qty.toString()),
-            TextCellValue(bestItem),
-            TextCellValue(purchase.toStringAsFixed(3)),
-            TextCellValue(total.toStringAsFixed(3)),
+          _appendExcelRow(resultSheet, [
+            item,
+            qty.toString(),
+            bestItem,
+            purchase.toStringAsFixed(3),
+            total.toStringAsFixed(3),
           ]);
         } else {
           final dataMap = {
@@ -1426,124 +1478,128 @@ class _OrderScreenState extends State<OrderScreen> {
         }
       }
 
-      missingSheet.appendRow([
-        TextCellValue("Item"),
-        TextCellValue("Qty"),
-        TextCellValue("Similar Item"),
-        TextCellValue("Match %"),
-      ]);
+      // ----------------------------------------------------------
+      // MISSING SHEET
+      // ----------------------------------------------------------
 
-      missingSheet.appendRow([TextCellValue("POSSIBLE MATCHES")]);
+      _appendExcelRow(missingSheet, ["Item", "Qty", "Similar Item", "Match %"]);
+
+      _appendExcelRow(missingSheet, ["POSSIBLE MATCHES"]);
 
       for (final item in similarItems) {
-        missingSheet.appendRow([
-          TextCellValue(item["item"].toString()),
-          TextCellValue(item["qty"].toString()),
-          TextCellValue(item["similar"].toString()),
-          TextCellValue("${item["score"]}%"),
+        _appendExcelRow(missingSheet, [
+          item["item"]?.toString() ?? "",
+          item["qty"]?.toString() ?? "0",
+          item["similar"]?.toString() ?? "",
+          "${item["score"]}%",
         ]);
       }
 
       missingSheet.appendRow([]);
 
-      missingSheet.appendRow([TextCellValue("NOT MATCHED ITEMS")]);
+      _appendExcelRow(missingSheet, ["NOT MATCHED ITEMS"]);
 
-      missingSheet.appendRow([
-        TextCellValue("Item"),
-        TextCellValue("Qty"),
-        TextCellValue("Similar Item"),
-        TextCellValue("Match %"),
-      ]);
+      _appendExcelRow(missingSheet, ["Item", "Qty", "Similar Item", "Match %"]);
 
       for (final item in notFound) {
-        missingSheet.appendRow([
-          TextCellValue(item["item"].toString()),
-          TextCellValue(item["qty"].toString()),
-          TextCellValue(item["similar"].toString()),
-          TextCellValue("${item["score"]}%"),
+        _appendExcelRow(missingSheet, [
+          item["item"]?.toString() ?? "",
+          item["qty"]?.toString() ?? "0",
+          item["similar"]?.toString() ?? "",
+          "${item["score"]}%",
         ]);
       }
 
+      // ----------------------------------------------------------
+      // TOTAL RESULT SHEET
+      // ----------------------------------------------------------
+
       resultSheet.appendRow([]);
 
-      resultSheet.appendRow([
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue("TOTAL"),
-        TextCellValue(""),
-        TextCellValue(totalSale.toStringAsFixed(3)),
+      _appendExcelRow(resultSheet, [
+        "",
+        "",
+        "TOTAL",
+        "",
+        totalSale.toStringAsFixed(3),
       ]);
 
-      final selectedSheet = excel["Selected Items"];
+      // ----------------------------------------------------------
+      // SELECTED ITEMS
+      // ----------------------------------------------------------
 
-      selectedSheet.appendRow([
-        TextCellValue("Item"),
-        TextCellValue("Qty"),
-        TextCellValue("Warehouse"),
-        TextCellValue("Matched Item"),
-        TextCellValue("Match %"),
-        TextCellValue("Purchase Price"),
-        TextCellValue("Sale Price"),
-        TextCellValue("Total"),
+      _appendExcelRow(selectedSheet, [
+        "Item",
+        "Qty",
+        "Warehouse",
+        "Matched Item",
+        "Match %",
+        "Purchase Price",
+        "Sale Price",
+        "Total",
       ]);
 
       double selectedTotal = 0;
 
       for (final item in selectedItems) {
-        final originalItem = item["item"].toString();
+        final originalItem = item["item"]?.toString() ?? "";
 
-        final qty = item["qty"] as int;
+        final qty = _toInt(item["qty"]);
 
-        final warehouseName = item["warehouseName"].toString();
+        final warehouseName = item["warehouseName"]?.toString() ?? "";
 
-        final matchedItem = item["matchedItem"].toString();
+        final matchedItem = item["matchedItem"]?.toString() ?? "";
 
-        final score = item["score"] as double;
+        final score = _toDouble(item["score"]);
 
-        final purchase = (item["purchase"] as num).toDouble();
+        final purchase = _toDouble(item["purchase"]);
 
-        final sale = (item["sale"] as num).toDouble();
+        final sale = _toDouble(item["sale"]);
 
         final total = sale * qty;
 
         selectedTotal += total;
 
-        selectedSheet.appendRow([
-          TextCellValue(originalItem),
-          TextCellValue(qty.toString()),
-          TextCellValue(warehouseName),
-          TextCellValue(matchedItem),
-          TextCellValue("${score.toStringAsFixed(0)}%"),
-          TextCellValue(purchase.toStringAsFixed(3)),
-          TextCellValue(sale.toStringAsFixed(3)),
-          TextCellValue(total.toStringAsFixed(3)),
+        _appendExcelRow(selectedSheet, [
+          originalItem,
+          qty.toString(),
+          warehouseName,
+          matchedItem,
+          "${score.toStringAsFixed(0)}%",
+          purchase.toStringAsFixed(3),
+          sale.toStringAsFixed(3),
+          total.toStringAsFixed(3),
         ]);
       }
 
       selectedSheet.appendRow([]);
 
-      selectedSheet.appendRow([
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue("TOTAL"),
-        TextCellValue(selectedTotal.toStringAsFixed(3)),
+      _appendExcelRow(selectedSheet, [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "TOTAL",
+        selectedTotal.toStringAsFixed(3),
       ]);
 
-      drugDetailsSheet.appendRow([
-        TextCellValue("Item"),
-        TextCellValue("Qty"),
-        TextCellValue("Warehouse"),
-        TextCellValue("Matched Item"),
-        TextCellValue("Match %"),
-        TextCellValue("Purchase Price"),
-        TextCellValue("Sale Price"),
-        TextCellValue("Total"),
-        TextCellValue("Registration"),
-        TextCellValue("Manufacturer"),
+      // ----------------------------------------------------------
+      // DRUG DETAILS ITEMS
+      // ----------------------------------------------------------
+
+      _appendExcelRow(drugDetailsSheet, [
+        "Item",
+        "Qty",
+        "Warehouse",
+        "Matched Item",
+        "Match %",
+        "Purchase Price",
+        "Sale Price",
+        "Total",
+        "Registration",
+        "Manufacturer",
       ]);
 
       double drugDetailsTotal = 0;
@@ -1551,19 +1607,17 @@ class _OrderScreenState extends State<OrderScreen> {
       for (final item in drugDetailsItems) {
         final originalItem = item["item"]?.toString() ?? "";
 
-        final qty = int.tryParse(item["qty"]?.toString() ?? "") ?? 0;
+        final qty = _toInt(item["qty"]);
 
         final warehouse = item["warehouse"]?.toString() ?? "";
 
         final matchedItem = item["matchedItem"]?.toString() ?? "";
 
-        final matchPercent =
-            double.tryParse(item["matchPercent"]?.toString() ?? "") ?? 0;
+        final matchPercent = _toDouble(item["matchPercent"]);
 
-        final purchase =
-            double.tryParse(item["purchase"]?.toString() ?? "") ?? 0;
+        final purchase = _toDouble(item["purchase"]);
 
-        final sale = double.tryParse(item["sale"]?.toString() ?? "") ?? 0;
+        final sale = _toDouble(item["sale"]);
 
         final registration = item["registration"]?.toString() ?? "";
 
@@ -1573,58 +1627,95 @@ class _OrderScreenState extends State<OrderScreen> {
 
         drugDetailsTotal += total;
 
-        drugDetailsSheet.appendRow([
-          TextCellValue(originalItem),
-          TextCellValue(qty.toString()),
-          TextCellValue(warehouse),
-          TextCellValue(matchedItem),
-          TextCellValue("${matchPercent.toStringAsFixed(0)}%"),
-          TextCellValue(purchase.toStringAsFixed(3)),
-          TextCellValue(sale.toStringAsFixed(3)),
-          TextCellValue(total.toStringAsFixed(3)),
-          TextCellValue(registration),
-          TextCellValue(manufacturer),
+        _appendExcelRow(drugDetailsSheet, [
+          originalItem,
+          qty.toString(),
+          warehouse,
+          matchedItem,
+          "${matchPercent.toStringAsFixed(0)}%",
+          purchase.toStringAsFixed(3),
+          sale.toStringAsFixed(3),
+          total.toStringAsFixed(3),
+          registration,
+          manufacturer,
         ]);
       }
 
       drugDetailsSheet.appendRow([]);
 
-      drugDetailsSheet.appendRow([
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue(""),
-        TextCellValue("TOTAL"),
-        TextCellValue(drugDetailsTotal.toStringAsFixed(3)),
-        TextCellValue(""),
-        TextCellValue(""),
+      _appendExcelRow(drugDetailsSheet, [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "TOTAL",
+        drugDetailsTotal.toStringAsFixed(3),
+        "",
+        "",
       ]);
 
-      final encoded = excel.encode();
+      // ----------------------------------------------------------
+      // ENCODE EXCEL
+      // ----------------------------------------------------------
 
-      if (encoded == null) {
-        throw Exception("Could not generate Excel file.");
+      if (mounted) {
+        setState(() {
+          statusText = "Encoding Excel file...";
+        });
       }
 
-      generatedFileBytes = Uint8List.fromList(encoded);
+      Uint8List? bytes;
 
-      if (!mounted) return;
+      try {
+        final encoded = excel.encode();
+
+        if (encoded == null || encoded.isEmpty) {
+          throw Exception("Excel encoder returned an empty file.");
+        }
+
+        bytes = Uint8List.fromList(encoded);
+      } catch (e, stack) {
+        debugPrint("EXCEL ENCODE ERROR: $e");
+        debugPrint(stack.toString());
+
+        throw Exception("Could not encode Excel workbook: $e");
+      }
+
+      // ----------------------------------------------------------
+      // STORE GENERATED FILE
+      // ----------------------------------------------------------
+
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
+        generatedFileBytes = bytes;
+
         isGenerating = false;
 
         statusText = "Order generated successfully ✔";
       });
-    } catch (e) {
+
+      _showMessage("Excel file generated successfully.");
+    } catch (e, stack) {
+      debugPrint("GENERATE ORDER ERROR: $e");
+
+      debugPrint(stack.toString());
+
       if (!mounted) return;
 
       setState(() {
         isGenerating = false;
 
-        statusText = "Error generating order:\n$e";
+        generatedFileBytes = null;
+
+        statusText = "Error generating Excel:\n$e";
       });
+
+      _showMessage("Could not generate Excel file.");
     }
   }
 
@@ -1653,50 +1744,171 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // SAVE FILE
+  // SAVE FILE - WINDOWS SAFE
   // ============================================================
 
   Future<void> downloadFile(Uint8List bytes) async {
+    if (bytes.isEmpty) {
+      _showMessage("The generated Excel file is empty.");
+      return;
+    }
+
+    if (isSavingFile) {
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      isSavingFile = true;
+      statusText = "Saving Excel file...";
+    });
+
     try {
-      final location = await getSaveLocation(suggestedName: "Order.xlsx");
+      // ----------------------------------------------------------
+      // WINDOWS FILE SAVE DIALOG
+      // ----------------------------------------------------------
+
+      final location = await getSaveLocation(
+        suggestedName: "Order.xlsx",
+        acceptedTypeGroups: [
+          XTypeGroup(
+            label: "Excel",
+            extensions: const ["xlsx"],
+          ),
+        ],
+      );
 
       if (location == null) {
+        if (!mounted) return;
+
+        setState(() {
+          isSavingFile = false;
+          statusText = "Save cancelled.";
+        });
+
         return;
       }
 
-      final path = location.path.endsWith(".xlsx")
-          ? location.path
-          : "${location.path}.xlsx";
+      String path = location.path.trim();
 
-      final file = File(path);
+      if (path.isEmpty) {
+        throw Exception("Invalid save location.");
+      }
 
-      await file.writeAsBytes(bytes);
+      // ----------------------------------------------------------
+      // FORCE XLSX EXTENSION
+      // ----------------------------------------------------------
 
-      final fileName = path.split(Platform.pathSeparator).last;
+      if (!path.toLowerCase().endsWith(".xlsx")) {
+        path = "$path.xlsx";
+      }
 
-      await saveOrderLocally(fileName: fileName, filePath: path);
+      debugPrint("SAVING EXCEL TO: $path");
 
-      final prefs = await SharedPreferences.getInstance();
+      // ----------------------------------------------------------
+      // SAVE EXCEL FILE
+      // ----------------------------------------------------------
 
-      await prefs.remove("drug_details_order_items");
+      final fileName = path.split(RegExp(r'[\\/]')).last;
+
+      final xFile = XFile.fromData(
+        bytes,
+        name: fileName,
+        mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+
+      await xFile.saveTo(path);
+
+      // ----------------------------------------------------------
+      // VERIFY EXCEL FILE
+      // ----------------------------------------------------------
+
+      final verifyFile = XFile(path);
+      final savedBytes = await verifyFile.length();
+
+      if (savedBytes <= 0) {
+        throw Exception("Excel file was not saved correctly.");
+      }
+
+      debugPrint(
+        "EXCEL SAVED SUCCESSFULLY: $path ($savedBytes bytes)",
+      );
+
+      // ----------------------------------------------------------
+      // IMPORTANT:
+      // From this point the Excel file is already successfully saved.
+      // History / SharedPreferences errors must NOT make Excel appear
+      // to have failed.
+      // ----------------------------------------------------------
+
+      try {
+        await saveOrderLocally(
+          fileName: fileName,
+          filePath: path,
+        );
+
+        debugPrint("ORDER HISTORY SAVED SUCCESSFULLY");
+      } catch (historyError, historyStack) {
+        debugPrint("WARNING: COULD NOT SAVE ORDER HISTORY");
+        debugPrint("HISTORY ERROR: $historyError");
+        debugPrint(historyStack.toString());
+
+        // Do NOT throw here.
+        // Excel was already saved successfully.
+      }
+
+      // ----------------------------------------------------------
+      // CLEAR DRUG DETAILS
+      // This is also optional and must not invalidate the Excel save.
+      // ----------------------------------------------------------
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+
+        await prefs.remove("drug_details_order_items");
+
+        debugPrint("DRUG DETAILS CLEARED");
+      } catch (clearError, clearStack) {
+        debugPrint("WARNING: COULD NOT CLEAR DRUG DETAILS");
+        debugPrint("CLEAR ERROR: $clearError");
+        debugPrint(clearStack.toString());
+
+        // Do NOT throw here.
+      }
+
+      // ----------------------------------------------------------
+      // FINAL SUCCESS
+      // ----------------------------------------------------------
 
       if (!mounted) return;
 
       setState(() {
         drugDetailsItems.clear();
-
-        statusText = "Saved Successfully ✔";
+        isSavingFile = false;
+        statusText = "Excel saved successfully ✔\n$path";
       });
 
-      await Process.run('cmd', ['/c', 'start', '', path]);
+      _showMessage("Excel file saved successfully.");
+
+      // ----------------------------------------------------------
+      // RESET AFTER SUCCESSFUL EXCEL SAVE
+      // ----------------------------------------------------------
 
       resetScreen();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint("ERROR SAVING EXCEL: $e");
+      debugPrint(stackTrace.toString());
+
       if (!mounted) return;
 
       setState(() {
-        statusText = "Error saving file:\n$e";
+        isSavingFile = false;
+        statusText = "Error saving Excel file:\n$e";
       });
+
+      _showMessage("Could not save Excel file.");
     }
   }
 
@@ -1705,6 +1917,8 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   void resetScreen() {
+    if (!mounted) return;
+
     setState(() {
       inventoryRows.clear();
 
@@ -1808,19 +2022,15 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: background,
-
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: omanRed),
           onPressed: () => Navigator.pop(context),
         ),
-
         titleSpacing: 4,
-
         title: Row(
           children: [
             Container(
@@ -1837,9 +2047,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 size: 21,
               ),
             ),
-
             const SizedBox(width: 10),
-
             const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1851,7 +2059,6 @@ class _OrderScreenState extends State<OrderScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-
                 Text(
                   "Order Generator",
                   style: TextStyle(
@@ -1865,7 +2072,6 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
           ],
         ),
-
         actions: [
           IconButton(
             tooltip: "Order History",
@@ -1877,17 +2083,14 @@ class _OrderScreenState extends State<OrderScreen> {
               );
             },
           ),
-
           IconButton(
             tooltip: "Logout",
             icon: const Icon(Icons.logout_rounded, color: omanRed),
             onPressed: logout,
           ),
-
           const SizedBox(width: 8),
         ],
       ),
-
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
@@ -1897,65 +2100,46 @@ class _OrderScreenState extends State<OrderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPageHeader(),
-
                 const SizedBox(height: 18),
-
                 _buildSteps(),
-
                 const SizedBox(height: 22),
-
                 _sectionTitle(
                   icon: Icons.input_rounded,
                   title: "Order Input",
                   subtitle:
                       "Add missing items or select items from Drug Details.",
                 ),
-
                 const SizedBox(height: 11),
-
                 _buildInputCards(),
-
                 const SizedBox(height: 22),
-
                 _sectionTitle(
                   icon: Icons.warehouse_rounded,
                   title: "Warehouse",
                   subtitle: "Choose the warehouse you want to order from.",
                 ),
-
                 const SizedBox(height: 11),
-
                 _buildWarehouseCard(),
-
                 if (selectedWarehouse != null) ...[
                   const SizedBox(height: 9),
                   _buildWarehouseInfoCard(),
                 ],
-
                 if (inventoryRows.isNotEmpty && orderRows.isNotEmpty) ...[
                   const SizedBox(height: 22),
-
                   _sectionTitle(
                     icon: Icons.compare_arrows_rounded,
                     title: "Matched Items",
                     subtitle:
                         "Review the items matched with the warehouse inventory.",
                   ),
-
                   const SizedBox(height: 11),
-
                   buildWarehouseSearchResults(),
                 ],
-
                 if (selectedItems.isNotEmpty) ...[
                   const SizedBox(height: 15),
                   _buildSelectedSummary(),
                 ],
-
                 const SizedBox(height: 22),
-
                 _buildGenerateArea(),
-
                 if (statusText.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _buildStatusCard(),
@@ -1981,7 +2165,6 @@ class _OrderScreenState extends State<OrderScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(19),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(.045),
@@ -2005,9 +2188,7 @@ class _OrderScreenState extends State<OrderScreen> {
               size: 28,
             ),
           ),
-
           const SizedBox(width: 14),
-
           const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2020,9 +2201,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-
                 SizedBox(height: 4),
-
                 Text(
                   "Upload missing items, choose a warehouse and generate your order.",
                   style: TextStyle(
@@ -2034,7 +2213,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           if (itemCount > 0) _countBadge("$itemCount", omanGreen),
         ],
       ),
@@ -2061,17 +2239,11 @@ class _OrderScreenState extends State<OrderScreen> {
       child: Row(
         children: [
           _buildStepItem(number: "1", title: "Items", active: step1),
-
           _buildStepLine(step2),
-
           _buildStepItem(number: "2", title: "Warehouse", active: step2),
-
           _buildStepLine(step3),
-
           _buildStepItem(number: "3", title: "Review", active: step3),
-
           _buildStepLine(step4),
-
           _buildStepItem(number: "4", title: "Generate", active: step4),
         ],
       ),
@@ -2120,9 +2292,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     ),
             ),
           ),
-
           const SizedBox(height: 6),
-
           Text(
             title,
             textAlign: TextAlign.center,
@@ -2164,9 +2334,7 @@ class _OrderScreenState extends State<OrderScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _iconBox(icon, omanRed),
-
         const SizedBox(width: 10),
-
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2179,9 +2347,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   color: textDark,
                 ),
               ),
-
               const SizedBox(height: 2),
-
               Text(
                 subtitle,
                 style: const TextStyle(color: textMuted, fontSize: 11),
@@ -2213,9 +2379,7 @@ class _OrderScreenState extends State<OrderScreen> {
             onPressed: pickInventory,
           ),
         ),
-
         const SizedBox(width: 12),
-
         Expanded(child: _buildDrugDetailsCompactCard()),
       ],
     );
@@ -2245,9 +2409,7 @@ class _OrderScreenState extends State<OrderScreen> {
               size: 22,
             ),
           ),
-
           const SizedBox(width: 11),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2262,9 +2424,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     color: textDark,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   subtitle,
                   maxLines: 1,
@@ -2274,9 +2434,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           const SizedBox(width: 7),
-
           OutlinedButton(
             onPressed: onPressed,
             style: OutlinedButton.styleFrom(
@@ -2322,9 +2480,7 @@ class _OrderScreenState extends State<OrderScreen> {
               size: 22,
             ),
           ),
-
           const SizedBox(width: 11),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2342,16 +2498,13 @@ class _OrderScreenState extends State<OrderScreen> {
                         ),
                       ),
                     ),
-
                     if (count > 0) ...[
                       const SizedBox(width: 6),
                       _countBadge("$count", omanGreen),
                     ],
                   ],
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   count == 0
                       ? "No items added"
@@ -2363,7 +2516,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           if (count > 0)
             IconButton(
               tooltip: "Clear",
@@ -2403,13 +2555,11 @@ class _OrderScreenState extends State<OrderScreen> {
                   selectedWarehouseId != null
                       ? Icons.check_rounded
                       : Icons.warehouse_rounded,
-                  color: selectedWarehouseId != null ? omanGreen : omanGreen,
+                  color: omanGreen,
                   size: 22,
                 ),
               ),
-
               const SizedBox(width: 11),
-
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2430,14 +2580,11 @@ class _OrderScreenState extends State<OrderScreen> {
                   ],
                 ),
               ),
-
               if (orderRows.isNotEmpty)
                 _countBadge("${orderRows.length}", omanGreen),
             ],
           ),
-
           const SizedBox(height: 13),
-
           loadingWarehouses
               ? const Padding(
                   padding: EdgeInsets.all(12),
@@ -2453,7 +2600,6 @@ class _OrderScreenState extends State<OrderScreen> {
               : DropdownButtonFormField<String>(
                   value: selectedWarehouseId,
                   isExpanded: true,
-
                   decoration: InputDecoration(
                     labelText: "Warehouse",
                     labelStyle: const TextStyle(fontSize: 12, color: textMuted),
@@ -2484,12 +2630,10 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                     ),
                   ),
-
                   hint: const Text(
                     "Choose Warehouse",
                     style: TextStyle(fontSize: 12),
                   ),
-
                   items: warehouses.map((warehouse) {
                     return DropdownMenuItem<String>(
                       value: warehouse["id"].toString(),
@@ -2500,7 +2644,6 @@ class _OrderScreenState extends State<OrderScreen> {
                       ),
                     );
                   }).toList(),
-
                   onChanged: (value) async {
                     if (value == null) {
                       return;
@@ -2522,6 +2665,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
                       selectedItems.clear();
 
+                      generatedFileBytes = null;
+
                       statusText = "Loading warehouse inventory...";
                     });
 
@@ -2534,7 +2679,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // WAREHOUSE INFO CARD
+  // WAREHOUSE INFO
   // ============================================================
 
   Widget _buildWarehouseInfoCard() {
@@ -2561,9 +2706,7 @@ class _OrderScreenState extends State<OrderScreen> {
           Row(
             children: [
               _iconBox(Icons.info_outline_rounded, omanGreen),
-
               const SizedBox(width: 8),
-
               const Expanded(
                 child: Text(
                   "Warehouse Information",
@@ -2574,32 +2717,24 @@ class _OrderScreenState extends State<OrderScreen> {
                   ),
                 ),
               ),
-
               if (orderRows.isNotEmpty)
                 _countBadge("${orderRows.length} items", omanGreen),
             ],
           ),
-
           const SizedBox(height: 10),
-
           Wrap(
             spacing: 7,
             runSpacing: 7,
             children: [
               _buildInfoChip(Icons.warehouse_outlined, name),
-
               _buildInfoChip(Icons.tag_rounded, code),
-
               if (phone.isNotEmpty) _buildInfoChip(Icons.phone_outlined, phone),
-
               if (address.isNotEmpty)
                 _buildInfoChip(Icons.location_on_outlined, address),
             ],
           ),
-
           if (whatsapp.isNotEmpty) ...[
             const SizedBox(height: 9),
-
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
@@ -2646,9 +2781,7 @@ class _OrderScreenState extends State<OrderScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: omanGreen),
-
           const SizedBox(width: 5),
-
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 210),
             child: Text(
@@ -2677,9 +2810,7 @@ class _OrderScreenState extends State<OrderScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 11, color: Colors.grey.shade600),
-
           const SizedBox(width: 4),
-
           Text(text, style: const TextStyle(fontSize: 9, color: textMuted)),
         ],
       ),
@@ -2708,9 +2839,7 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
             child: const Icon(Icons.check_rounded, color: omanGreen, size: 20),
           ),
-
           const SizedBox(width: 10),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2723,9 +2852,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     fontSize: 12,
                   ),
                 ),
-
                 const SizedBox(height: 2),
-
                 Text(
                   "${selectedItems.length} items selected manually",
                   style: TextStyle(color: Colors.green.shade700, fontSize: 10),
@@ -2733,7 +2860,6 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-
           Text(
             "${selectedItems.length}",
             style: const TextStyle(
@@ -2763,9 +2889,7 @@ class _OrderScreenState extends State<OrderScreen> {
           Row(
             children: [
               _iconBox(Icons.file_download_outlined, omanRed),
-
               const SizedBox(width: 9),
-
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2788,9 +2912,7 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 13),
-
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -2825,17 +2947,15 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             ),
           ),
-
           if (generatedFileBytes != null) ...[
             const SizedBox(height: 9),
-
             SizedBox(
               width: double.infinity,
               height: 44,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  downloadFile(generatedFileBytes!);
-                },
+                onPressed: isGenerating
+                    ? null
+                    : () => downloadFile(generatedFileBytes!),
                 icon: const Icon(Icons.save_alt_rounded, size: 18),
                 label: const Text(
                   "Save Excel File",
@@ -2873,7 +2993,7 @@ class _OrderScreenState extends State<OrderScreen> {
         ? omanRed
         : omanRed;
 
-    final background = isSuccess
+    final statusBackground = isSuccess
         ? Colors.green.shade50
         : isError
         ? Colors.red.shade50
@@ -2884,7 +3004,7 @@ class _OrderScreenState extends State<OrderScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
       decoration: BoxDecoration(
-        color: background,
+        color: statusBackground,
         borderRadius: BorderRadius.circular(11),
       ),
       child: Row(
@@ -2898,9 +3018,7 @@ class _OrderScreenState extends State<OrderScreen> {
             color: color,
             size: 18,
           ),
-
           const SizedBox(width: 8),
-
           Expanded(
             child: Text(
               statusText,

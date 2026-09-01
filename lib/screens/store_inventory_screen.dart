@@ -25,21 +25,27 @@ class StoreInventoryScreen extends StatefulWidget {
 
 class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
-  // SETTINGS
+  // OMAN COLORS - SAME AS HISTORY UI
   // ============================================================
 
-  // Firestore maximum is 500.
-  // 200 is safer for slower connections.
+  static const Color omanRed = Color(0xffC8102E);
+  static const Color omanGreen = Color(0xff00843D);
+  static const Color omanWhite = Color(0xffFFFFFF);
+
+  static const Color pageBackground = Color(0xffF5F7F8);
+  static const Color textDark = Color(0xff202124);
+  static const Color textGrey = Color(0xff6B7280);
+
+  // ============================================================
+  // FIREBASE SETTINGS
+  // ============================================================
+
   static const int batchSize = 200;
 
-  // Do NOT run multiple Firebase commits at the same time.
-  // Sequential commits are much more stable.
   static const int parallelBatches = 1;
 
-  // Maximum time for one Firebase commit.
   static const Duration firebaseTimeout = Duration(seconds: 180);
 
-  // Number of retry attempts.
   static const int maxRetries = 3;
 
   // ============================================================
@@ -131,7 +137,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       final char = line[i];
 
       if (char == '"') {
-        if (insideQuotes && i + 1 < line.length && line[i + 1] == '"') {
+        if (insideQuotes &&
+            i + 1 < line.length &&
+            line[i + 1] == '"') {
           buffer.write('"');
           i++;
           continue;
@@ -256,7 +264,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       "product description",
     ];
 
-    // Exact match
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
@@ -265,7 +272,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       }
     }
 
-    // Partial match
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
@@ -291,7 +297,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     for (int i = 0; i < header.length; i++) {
       final value = _normalizeHeader(header[i]);
 
-      // Highest priority
       if (value.contains("warehouse price") ||
           value.contains("wh price") ||
           value.contains("purchase price")) {
@@ -329,11 +334,8 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     final header = rows[headerIndex];
 
     debugPrint("=================================");
-
     debugPrint("HEADER ROW INDEX: $headerIndex");
-
     debugPrint("HEADER: $header");
-
     debugPrint("=================================");
 
     final nameColumn = _findNameColumn(header);
@@ -341,7 +343,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     final priceColumns = _findPriceColumns(header);
 
     debugPrint("NAME COLUMN: $nameColumn");
-
     debugPrint("PRICE COLUMNS: $priceColumns");
 
     final items = <Map<String, dynamic>>[];
@@ -356,19 +357,11 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         continue;
       }
 
-      // ======================================================
-      // NAME
-      // ======================================================
-
       String name = "";
 
       if (nameColumn < row.length) {
         name = row[nameColumn].trim();
       }
-
-      // ======================================================
-      // FALLBACK NAME
-      // ======================================================
 
       if (name.isEmpty) {
         for (final cell in row) {
@@ -393,10 +386,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         continue;
       }
 
-      // ======================================================
-      // IGNORE HEADER-LIKE ROWS
-      // ======================================================
-
       final normalizedName = _normalizeHeader(name);
 
       if (normalizedName == "item" ||
@@ -409,15 +398,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         continue;
       }
 
-      // ======================================================
-      // PRICE
-      // ======================================================
-
       double? price;
-
-      // ======================================================
-      // PRICE COLUMNS
-      // ======================================================
 
       for (final column in priceColumns) {
         if (column >= row.length) {
@@ -434,10 +415,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
           price = parsed;
         }
       }
-
-      // ======================================================
-      // FALLBACK PRICE
-      // ======================================================
 
       if (price == null) {
         for (int column = 0; column < row.length; column++) {
@@ -457,10 +434,6 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         }
       }
 
-      // ======================================================
-      // NO PRICE
-      // ======================================================
-
       if (price == null) {
         skipped++;
 
@@ -469,28 +442,24 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         continue;
       }
 
-      // ======================================================
-      // ADD ITEM
-      // ======================================================
-
-      items.add({"name": name, "price": price, "active": true});
+      items.add({
+        "name": name,
+        "price": price,
+        "active": true,
+      });
 
       if (items.length <= 10) {
         debugPrint(
           "ITEM ${items.length}: "
-          "name='$name' | price=$price",
+              "name='$name' | price=$price",
         );
       }
     }
 
     debugPrint("=================================");
-
     debugPrint("TOTAL ROWS: ${rows.length}");
-
     debugPrint("VALID ITEMS: ${items.length}");
-
     debugPrint("SKIPPED ROWS: $skipped");
-
     debugPrint("=================================");
 
     return items;
@@ -504,7 +473,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     if (!Platform.isWindows) {
       throw Exception(
         "PDF conversion using Tabula is currently "
-        "configured for Windows.",
+            "configured for Windows.",
       );
     }
 
@@ -546,58 +515,47 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       if (mounted) {
         setState(() {
           currentStage = "Converting PDF...";
-
           status = "Converting PDF...";
-
           progress = 0;
         });
       }
 
       debugPrint("=================================");
-
       debugPrint("STORE INVENTORY PDF -> CSV");
-
       debugPrint("STORE CODE: ${widget.storeCode}");
-
       debugPrint("PDF: $pdfPath");
-
       debugPrint("JAVA: $javaPath");
-
       debugPrint("TABULA: $tabulaPath");
-
       debugPrint("CSV: $csvPath");
-
       debugPrint("=================================");
 
-      final result = await Process.run(javaPath, [
-        "-jar",
-        tabulaPath,
-        "-p",
-        "all",
-        "-f",
-        "CSV",
-        "-o",
-        csvPath,
-        pdfPath,
-      ], runInShell: true);
+      final result = await Process.run(
+        javaPath,
+        [
+          "-jar",
+          tabulaPath,
+          "-p",
+          "all",
+          "-f",
+          "CSV",
+          "-o",
+          csvPath,
+          pdfPath,
+        ],
+        runInShell: true,
+      );
 
       debugPrint("TABULA STDOUT:");
-
       debugPrint(result.stdout.toString());
 
       debugPrint("TABULA STDERR:");
-
       debugPrint(result.stderr.toString());
 
-      debugPrint(
-        "TABULA EXIT CODE: "
-        "${result.exitCode}",
-      );
+      debugPrint("TABULA EXIT CODE: ${result.exitCode}");
 
       if (result.exitCode != 0) {
         throw Exception(
-          "Tabula failed:\n"
-          "${result.stderr}",
+          "Tabula failed:\n${result.stderr}",
         );
       }
 
@@ -607,7 +565,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         throw Exception("Tabula did not create CSV file.");
       }
 
-      final csvText = await csvFile.readAsString(encoding: utf8);
+      final csvText = await csvFile.readAsString(
+        encoding: utf8,
+      );
 
       if (csvText.trim().isEmpty) {
         throw Exception("Tabula returned an empty CSV.");
@@ -627,11 +587,15 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // SPLIT LIST
   // ============================================================
 
-  List<List<T>> _splitIntoChunks<T>(List<T> items, int size) {
+  List<List<T>> _splitIntoChunks<T>(
+      List<T> items,
+      int size,
+      ) {
     final result = <List<T>>[];
 
     for (int i = 0; i < items.length; i += size) {
-      final end = (i + size < items.length) ? i + size : items.length;
+      final end =
+      (i + size < items.length) ? i + size : items.length;
 
       result.add(items.sublist(i, end));
     }
@@ -644,11 +608,11 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<void> _commitBatchWithRetry(
-    WriteBatch batch,
-    String operation,
-    int batchNumber,
-    int totalBatches,
-  ) async {
+      WriteBatch batch,
+      String operation,
+      int batchNumber,
+      int totalBatches,
+      ) async {
     Object? lastError;
 
     StackTrace? lastStackTrace;
@@ -659,21 +623,18 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
         debugPrint(
           "$operation "
-          "BATCH $batchNumber/$totalBatches "
-          "ATTEMPT $attempt/$maxRetries",
+              "BATCH $batchNumber/$totalBatches "
+              "ATTEMPT $attempt/$maxRetries",
         );
 
-        debugPrint(
-          "TIMEOUT: "
-          "${firebaseTimeout.inSeconds} seconds",
+        await batch.commit().timeout(
+          firebaseTimeout,
         );
-
-        await batch.commit().timeout(firebaseTimeout);
 
         debugPrint(
           "$operation "
-          "BATCH $batchNumber/$totalBatches "
-          "SUCCESS",
+              "BATCH $batchNumber/$totalBatches "
+              "SUCCESS",
         );
 
         return;
@@ -686,8 +647,8 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
         debugPrint(
           "$operation "
-          "BATCH $batchNumber/$totalBatches "
-          "FAILED",
+              "BATCH $batchNumber/$totalBatches "
+              "FAILED",
         );
 
         debugPrint("ATTEMPT: $attempt/$maxRetries");
@@ -699,15 +660,16 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
           debugPrint(
             "RETRYING IN "
-            "$waitSeconds SECONDS...",
+                "$waitSeconds SECONDS...",
           );
 
           if (mounted) {
             setState(() {
-              currentStage = "$operation batch failed. Retrying...";
+              currentStage =
+              "$operation batch failed. Retrying...";
 
               status =
-                  "$operation\n"
+              "$operation\n"
                   "Batch $batchNumber / "
                   "$totalBatches\n"
                   "Retry $attempt / "
@@ -715,7 +677,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
             });
           }
 
-          await Future.delayed(Duration(seconds: waitSeconds));
+          await Future.delayed(
+            Duration(seconds: waitSeconds),
+          );
         }
       }
     }
@@ -724,7 +688,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
     debugPrint(
       "$operation BATCH FAILED "
-      "AFTER $maxRetries ATTEMPTS",
+          "AFTER $maxRetries ATTEMPTS",
     );
 
     debugPrint("ERROR: $lastError");
@@ -737,9 +701,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
     throw Exception(
       "Firebase $operation timeout/error "
-      "after $maxRetries attempts.\n"
-      "Batch: $batchNumber/$totalBatches\n"
-      "Last error: $lastError",
+          "after $maxRetries attempts.\n"
+          "Batch: $batchNumber/$totalBatches\n"
+          "Last error: $lastError",
     );
   }
 
@@ -747,23 +711,28 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // GET OLD DOCUMENTS WITH RETRY
   // ============================================================
 
-  Future<List<QueryDocumentSnapshot>> _getOldInventoryWithRetry(
-    CollectionReference inventoryRef,
-  ) async {
+  Future<List<QueryDocumentSnapshot>>
+  _getOldInventoryWithRetry(
+      CollectionReference inventoryRef,
+      ) async {
     Object? lastError;
 
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    for (int attempt = 1;
+    attempt <= maxRetries;
+    attempt++) {
       try {
         debugPrint(
           "READ OLD INVENTORY "
-          "ATTEMPT $attempt/$maxRetries",
+              "ATTEMPT $attempt/$maxRetries",
         );
 
-        final snapshot = await inventoryRef.get().timeout(firebaseTimeout);
+        final snapshot = await inventoryRef
+            .get()
+            .timeout(firebaseTimeout);
 
         debugPrint(
           "OLD INVENTORY READ SUCCESS: "
-          "${snapshot.docs.length}",
+              "${snapshot.docs.length}",
         );
 
         return snapshot.docs;
@@ -772,23 +741,23 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
         debugPrint(
           "READ OLD INVENTORY FAILED "
-          "ATTEMPT $attempt/$maxRetries",
+              "ATTEMPT $attempt/$maxRetries",
         );
 
         debugPrint("ERROR: $e");
 
         if (attempt < maxRetries) {
-          final waitSeconds = attempt * 5;
-
-          await Future.delayed(Duration(seconds: waitSeconds));
+          await Future.delayed(
+            Duration(seconds: attempt * 5),
+          );
         }
       }
     }
 
     throw Exception(
       "Firebase read timeout/error "
-      "after $maxRetries attempts.\n"
-      "Last error: $lastError",
+          "after $maxRetries attempts.\n"
+          "Last error: $lastError",
     );
   }
 
@@ -797,55 +766,40 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<int> deleteOldInventory(
-    FirebaseFirestore db,
-    CollectionReference inventoryRef,
-  ) async {
+      FirebaseFirestore db,
+      CollectionReference inventoryRef,
+      ) async {
     try {
       if (mounted) {
         setState(() {
           currentStage = "Reading old inventory...";
-
           status = "Reading old inventory...";
-
           progress = 0;
-
           processedItems = 0;
-
           totalItems = 0;
-
           currentBatch = 0;
-
           totalBatches = 0;
         });
       }
 
       debugPrint("=================================");
-
       debugPrint("READING OLD INVENTORY...");
-
       debugPrint("=================================");
 
-      // ======================================================
-      // READ OLD DOCUMENTS
-      // ======================================================
-
-      final oldDocs = await _getOldInventoryWithRetry(inventoryRef);
+      final oldDocs =
+      await _getOldInventoryWithRetry(inventoryRef);
 
       final total = oldDocs.length;
 
       debugPrint("=================================");
-
       debugPrint("OLD INVENTORY COUNT: $total");
-
       debugPrint("=================================");
 
       if (total == 0) {
         if (mounted) {
           setState(() {
             currentStage = "Old inventory is empty";
-
             status = "Old inventory is empty";
-
             progress = 1;
           });
         }
@@ -853,58 +807,64 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         return 0;
       }
 
-      // ======================================================
-      // SPLIT
-      // ======================================================
-
-      final chunks = _splitIntoChunks(oldDocs, batchSize);
+      final chunks =
+      _splitIntoChunks(oldDocs, batchSize);
 
       totalBatches = chunks.length;
 
       debugPrint(
-        "DELETE BATCHES: "
-        "${chunks.length}",
+        "DELETE BATCHES: ${chunks.length}",
       );
-
-      debugPrint("BATCH SIZE: $batchSize");
 
       debugPrint(
-        "PARALLEL BATCHES: "
-        "$parallelBatches",
+        "BATCH SIZE: $batchSize",
       );
 
-      // ======================================================
-      // DELETE
-      // ======================================================
+      debugPrint(
+        "PARALLEL BATCHES: $parallelBatches",
+      );
 
       int deleted = 0;
 
-      for (int start = 0; start < chunks.length; start += parallelBatches) {
-        final end = (start + parallelBatches < chunks.length)
+      for (
+      int start = 0;
+      start < chunks.length;
+      start += parallelBatches
+      ) {
+        final end =
+        (start + parallelBatches < chunks.length)
             ? start + parallelBatches
             : chunks.length;
 
-        final currentChunks = chunks.sublist(start, end);
+        final currentChunks =
+        chunks.sublist(start, end);
 
         debugPrint("=================================");
 
         debugPrint(
           "START DELETE GROUP "
-          "${start + 1}-$end / "
-          "${chunks.length}",
+              "${start + 1}-$end / "
+              "${chunks.length}",
         );
 
         debugPrint("=================================");
 
         final futures = <Future<int>>[];
 
-        for (int i = 0; i < currentChunks.length; i++) {
+        for (int i = 0;
+        i < currentChunks.length;
+        i++) {
           final chunk = currentChunks[i];
 
           final batchNumber = start + i + 1;
 
           futures.add(
-            _deleteInventoryBatch(db, chunk, batchNumber, chunks.length),
+            _deleteInventoryBatch(
+              db,
+              chunk,
+              batchNumber,
+              chunks.length,
+            ),
           );
         }
 
@@ -914,45 +874,40 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
           deleted += count;
         }
 
-        // ====================================================
-        // UPDATE PROGRESS
-        // ====================================================
-
         if (mounted) {
           setState(() {
             processedItems = deleted;
 
             totalItems = total;
 
-            currentBatch = (deleted / batchSize).ceil();
+            currentBatch =
+                (deleted / batchSize).ceil();
 
             totalBatches = chunks.length;
 
-            progress = (deleted / total).clamp(0.0, 1.0);
+            progress =
+                (deleted / total).clamp(0.0, 1.0);
 
-            currentStage = "Removing old inventory...";
+            currentStage =
+            "Removing old inventory...";
 
             status =
-                "Removing old inventory...\n"
+            "Removing old inventory...\n"
                 "$deleted / $total";
           });
         }
 
         debugPrint(
           "DELETE PROGRESS: "
-          "$deleted / $total",
+              "$deleted / $total",
         );
       }
-
-      // ======================================================
-      // FINISHED
-      // ======================================================
 
       debugPrint("=================================");
 
       debugPrint(
         "OLD INVENTORY DELETE FINISHED: "
-        "$deleted",
+            "$deleted",
       );
 
       debugPrint("=================================");
@@ -962,7 +917,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
           currentStage = "Old inventory removed";
 
           status =
-              "Old inventory removed\n"
+          "Old inventory removed\n"
               "$deleted documents deleted";
 
           progress = 1.0;
@@ -977,7 +932,9 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     } catch (e, stackTrace) {
       debugPrint("=================================");
 
-      debugPrint("DELETE OLD INVENTORY FAILED");
+      debugPrint(
+        "DELETE OLD INVENTORY FAILED",
+      );
 
       debugPrint("ERROR: $e");
 
@@ -996,23 +953,16 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<int> _deleteInventoryBatch(
-    FirebaseFirestore db,
-    List<QueryDocumentSnapshot> docs,
-    int batchNumber,
-    int totalBatches,
-  ) async {
+      FirebaseFirestore db,
+      List<QueryDocumentSnapshot> docs,
+      int batchNumber,
+      int totalBatches,
+      ) async {
     debugPrint(
       "START DELETE BATCH "
-      "$batchNumber/$totalBatches "
-      "(${docs.length} docs)",
+          "$batchNumber/$totalBatches "
+          "(${docs.length} docs)",
     );
-
-    // IMPORTANT:
-    // Create the batch ONCE.
-    //
-    // If commit times out and we retry,
-    // we use the same document references.
-    // Delete is therefore safe/idempotent.
 
     final batch = db.batch();
 
@@ -1020,13 +970,18 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       batch.delete(doc.reference);
     }
 
-    await _commitBatchWithRetry(batch, "DELETE", batchNumber, totalBatches);
+    await _commitBatchWithRetry(
+      batch,
+      "DELETE",
+      batchNumber,
+      totalBatches,
+    );
 
     debugPrint(
       "DELETE BATCH "
-      "$batchNumber/$totalBatches "
-      "COMPLETED "
-      "(${docs.length} docs)",
+          "$batchNumber/$totalBatches "
+          "COMPLETED "
+          "(${docs.length} docs)",
     );
 
     return docs.length;
@@ -1037,46 +992,51 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<int> uploadNewInventory(
-    FirebaseFirestore db,
-    CollectionReference inventoryRef,
-    List<Map<String, dynamic>> items,
-  ) async {
+      FirebaseFirestore db,
+      CollectionReference inventoryRef,
+      List<Map<String, dynamic>> items,
+      ) async {
     final total = items.length;
 
     if (total == 0) {
       return 0;
     }
 
-    final chunks = _splitIntoChunks(items, batchSize);
+    final chunks =
+    _splitIntoChunks(items, batchSize);
 
     totalBatches = chunks.length;
 
     int uploaded = 0;
 
-    // ========================================================
-    // UPLOAD
-    // ========================================================
-
-    for (int start = 0; start < chunks.length; start += parallelBatches) {
-      final end = (start + parallelBatches < chunks.length)
+    for (
+    int start = 0;
+    start < chunks.length;
+    start += parallelBatches
+    ) {
+      final end =
+      (start + parallelBatches < chunks.length)
           ? start + parallelBatches
           : chunks.length;
 
-      final currentChunks = chunks.sublist(start, end);
+      final currentChunks =
+      chunks.sublist(start, end);
 
       debugPrint("=================================");
 
       debugPrint(
         "START UPLOAD GROUP "
-        "${start + 1}-$end / "
-        "${chunks.length}",
+            "${start + 1}-$end / "
+            "${chunks.length}",
       );
 
       debugPrint("=================================");
 
       final futures = <Future<int>>[];
 
-      for (int i = 0; i < currentChunks.length; i++) {
+      for (int i = 0;
+      i < currentChunks.length;
+      i++) {
         final chunk = currentChunks[i];
 
         final batchNumber = start + i + 1;
@@ -1098,39 +1058,40 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         uploaded += count;
       }
 
-      // ======================================================
-      // PROGRESS
-      // ======================================================
-
       if (mounted) {
         setState(() {
           processedItems = uploaded;
 
           totalItems = total;
 
-          currentBatch = (uploaded / batchSize).ceil();
+          currentBatch =
+              (uploaded / batchSize).ceil();
 
           totalBatches = chunks.length;
 
-          progress = (uploaded / total).clamp(0.0, 1.0);
+          progress =
+              (uploaded / total).clamp(0.0, 1.0);
 
-          currentStage = "Uploading inventory...";
+          currentStage =
+          "Uploading inventory...";
 
           status =
-              "Uploading inventory...\n"
+          "Uploading inventory...\n"
               "$uploaded / $total";
         });
       }
 
       debugPrint(
         "UPLOAD PROGRESS: "
-        "$uploaded / $total",
+            "$uploaded / $total",
       );
     }
 
     debugPrint("=================================");
 
-    debugPrint("UPLOAD FINISHED: $uploaded");
+    debugPrint(
+      "UPLOAD FINISHED: $uploaded",
+    );
 
     debugPrint("=================================");
 
@@ -1142,26 +1103,17 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   // ============================================================
 
   Future<int> _uploadInventoryBatch(
-    FirebaseFirestore db,
-    CollectionReference inventoryRef,
-    List<Map<String, dynamic>> items,
-    int batchNumber,
-    int totalBatches,
-  ) async {
+      FirebaseFirestore db,
+      CollectionReference inventoryRef,
+      List<Map<String, dynamic>> items,
+      int batchNumber,
+      int totalBatches,
+      ) async {
     debugPrint(
       "START UPLOAD BATCH "
-      "$batchNumber/$totalBatches "
-      "(${items.length} docs)",
+          "$batchNumber/$totalBatches "
+          "(${items.length} docs)",
     );
-
-    // IMPORTANT:
-    // Document IDs are generated ONCE.
-    //
-    // If commit times out and retry happens,
-    // the exact same document references
-    // are used again.
-    //
-    // This prevents duplicate documents.
 
     final batch = db.batch();
 
@@ -1170,59 +1122,71 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       batch.set(docRef, {
         "name": item["name"].toString(),
-
         "price": item["price"],
-
         "active": true,
-
         "updatedAt": FieldValue.serverTimestamp(),
       });
     }
 
-    await _commitBatchWithRetry(batch, "UPLOAD", batchNumber, totalBatches);
+    await _commitBatchWithRetry(
+      batch,
+      "UPLOAD",
+      batchNumber,
+      totalBatches,
+    );
 
     debugPrint(
       "UPLOAD BATCH "
-      "$batchNumber/$totalBatches "
-      "COMPLETED "
-      "(${items.length} docs)",
+          "$batchNumber/$totalBatches "
+          "COMPLETED "
+          "(${items.length} docs)",
     );
 
     return items.length;
   }
 
   // ============================================================
-  // VERIFY FIREBASE WITH RETRY
+  // VERIFY FIREBASE
   // ============================================================
 
-  Future<int> _verifyInventory(CollectionReference inventoryRef) async {
+  Future<int> _verifyInventory(
+      CollectionReference inventoryRef,
+      ) async {
     Object? lastError;
 
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    for (int attempt = 1;
+    attempt <= maxRetries;
+    attempt++) {
       try {
         debugPrint(
           "VERIFY INVENTORY "
-          "ATTEMPT $attempt/$maxRetries",
+              "ATTEMPT $attempt/$maxRetries",
         );
 
-        final snapshot = await inventoryRef.get().timeout(firebaseTimeout);
+        final snapshot = await inventoryRef
+            .get()
+            .timeout(firebaseTimeout);
 
         return snapshot.docs.length;
       } catch (e) {
         lastError = e;
 
-        debugPrint("VERIFY FAILED: $e");
+        debugPrint(
+          "VERIFY FAILED: $e",
+        );
 
         if (attempt < maxRetries) {
-          await Future.delayed(Duration(seconds: attempt * 5));
+          await Future.delayed(
+            Duration(seconds: attempt * 5),
+          );
         }
       }
     }
 
     throw Exception(
       "Firebase verification failed "
-      "after $maxRetries attempts.\n"
-      "Last error: $lastError",
+          "after $maxRetries attempts.\n"
+          "Last error: $lastError",
     );
   }
 
@@ -1236,13 +1200,19 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     }
 
     try {
-      // ======================================================
+      // ========================================================
       // PICK FILE
-      // ======================================================
+      // ========================================================
 
-      final result = await FilePicker.platform.pickFiles(
+      final result =
+      await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ["xlsx", "xls", "pdf", "csv"],
+        allowedExtensions: [
+          "xlsx",
+          "xls",
+          "pdf",
+          "csv",
+        ],
         withData: true,
       );
 
@@ -1254,11 +1224,15 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       final filePath = file.path;
 
-      if (filePath == null || filePath.trim().isEmpty) {
-        throw Exception("Could not get file path.");
+      if (filePath == null ||
+          filePath.trim().isEmpty) {
+        throw Exception(
+          "Could not get file path.",
+        );
       }
 
-      final extension = file.extension?.toLowerCase() ?? "";
+      final extension =
+          file.extension?.toLowerCase() ?? "";
 
       if (!mounted) {
         return;
@@ -1287,35 +1261,34 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       debugPrint("OPENING STORE INVENTORY");
 
       debugPrint(
-        "STORE CODE = "
-        "${widget.storeCode}",
+        "STORE CODE = ${widget.storeCode}",
       );
 
       debugPrint(
-        "FILE NAME = "
-        "${file.name}",
+        "FILE NAME = ${file.name}",
       );
 
       debugPrint(
-        "FILE EXTENSION = "
-        "$extension",
+        "FILE EXTENSION = $extension",
       );
 
       debugPrint(
         "INVENTORY PATH = "
-        "stores/${widget.storeCode}/inventory",
+            "stores/${widget.storeCode}/inventory",
       );
 
       debugPrint("=================================");
 
-      // ======================================================
+      // ========================================================
       // READ FILE
-      // ======================================================
+      // ========================================================
 
       List<List<String>> rows;
 
       if (extension == "pdf") {
-        rows = await convertPdfToRows(filePath);
+        rows = await convertPdfToRows(
+          filePath,
+        );
       } else if (extension == "csv") {
         if (mounted) {
           setState(() {
@@ -1327,7 +1300,10 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
           });
         }
 
-        final csvText = await File(filePath).readAsString(encoding: utf8);
+        final csvText =
+        await File(filePath).readAsString(
+          encoding: utf8,
+        );
 
         rows = readCsv(csvText);
       } else {
@@ -1344,56 +1320,60 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         Uint8List? bytes = file.bytes;
 
         if (bytes == null || bytes.isEmpty) {
-          bytes = await File(filePath).readAsBytes();
+          bytes =
+          await File(filePath).readAsBytes();
         }
 
         if (bytes.isEmpty) {
-          throw Exception("Could not read Excel file.");
+          throw Exception(
+            "Could not read Excel file.",
+          );
         }
 
         rows = await readExcel(bytes);
       }
 
-      // ======================================================
+      // ========================================================
       // CHECK ROWS
-      // ======================================================
+      // ========================================================
 
       debugPrint("=================================");
 
       debugPrint(
-        "ROWS EXTRACTED: "
-        "${rows.length}",
+        "ROWS EXTRACTED: ${rows.length}",
       );
 
       if (rows.isNotEmpty) {
         debugPrint(
-          "FIRST ROW: "
-          "${rows.first}",
+          "FIRST ROW: ${rows.first}",
         );
       }
 
       if (rows.length > 1) {
         debugPrint(
-          "SECOND ROW: "
-          "${rows[1]}",
+          "SECOND ROW: ${rows[1]}",
         );
       }
 
       debugPrint("=================================");
 
       if (rows.isEmpty) {
-        throw Exception("No rows were extracted from the file.");
+        throw Exception(
+          "No rows were extracted from the file.",
+        );
       }
 
-      // ======================================================
+      // ========================================================
       // EXTRACT ITEMS
-      // ======================================================
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Detecting item names and prices...";
+          currentStage =
+          "Detecting item names and prices...";
 
-          status = "Detecting item names and prices...";
+          status =
+          "Detecting item names and prices...";
 
           progress = 0;
         });
@@ -1401,27 +1381,26 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       final items = extractItems(rows);
 
-      // ======================================================
+      // ========================================================
       // SAFETY CHECK
-      // ======================================================
+      // ========================================================
 
       if (items.isEmpty) {
         throw Exception(
           "No valid items found.\n\n"
-          "The file must contain an item name "
-          "and a price.",
+              "The file must contain an item name "
+              "and a price.",
         );
       }
 
-      if (rows.length > 100 && items.length < 10) {
+      if (rows.length > 100 &&
+          items.length < 10) {
         throw Exception(
           "Extraction failed.\n\n"
-          "Rows extracted: "
-          "${rows.length}\n"
-          "Valid items: "
-          "${items.length}\n\n"
-          "Old Firebase inventory "
-          "was NOT deleted.",
+              "Rows extracted: ${rows.length}\n"
+              "Valid items: ${items.length}\n\n"
+              "Old Firebase inventory "
+              "was NOT deleted.",
         );
       }
 
@@ -1429,30 +1408,37 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       debugPrint(
         "ITEMS READY FOR FIREBASE: "
-        "${items.length}",
+            "${items.length}",
       );
 
       debugPrint("=================================");
 
-      // ======================================================
+      // ========================================================
       // FIREBASE
-      // ======================================================
+      // ========================================================
 
-      final db = FirebaseFirestore.instance;
+      final db =
+          FirebaseFirestore.instance;
 
-      final storeRef = db.collection("stores").doc(widget.storeCode);
+      final storeRef =
+      db.collection("stores").doc(
+        widget.storeCode,
+      );
 
-      final inventoryRef = storeRef.collection("inventory");
+      final inventoryRef =
+      storeRef.collection("inventory");
 
-      // ======================================================
+      // ========================================================
       // DELETE OLD
-      // ======================================================
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Removing old inventory...";
+          currentStage =
+          "Removing old inventory...";
 
-          status = "Removing old inventory...";
+          status =
+          "Removing old inventory...";
 
           progress = 0;
 
@@ -1466,23 +1452,27 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         });
       }
 
-      final deleted = await deleteOldInventory(db, inventoryRef);
-
-      debugPrint(
-        "OLD DOCUMENTS DELETED: "
-        "$deleted",
+      final deleted =
+      await deleteOldInventory(
+        db,
+        inventoryRef,
       );
 
-      // ======================================================
+      debugPrint(
+        "OLD DOCUMENTS DELETED: $deleted",
+      );
+
+      // ========================================================
       // UPLOAD NEW
-      // ======================================================
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Uploading inventory...";
+          currentStage =
+          "Uploading inventory...";
 
           status =
-              "Uploading inventory...\n"
+          "Uploading inventory...\n"
               "0 / ${items.length}";
 
           progress = 0;
@@ -1493,78 +1483,93 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
           currentBatch = 0;
 
-          totalBatches = (items.length / batchSize).ceil();
+          totalBatches =
+              (items.length / batchSize).ceil();
         });
       }
 
-      final uploaded = await uploadNewInventory(db, inventoryRef, items);
+      final uploaded =
+      await uploadNewInventory(
+        db,
+        inventoryRef,
+        items,
+      );
 
-      // ======================================================
+      // ========================================================
       // CHECK UPLOAD COUNT
-      // ======================================================
+      // ========================================================
 
       if (uploaded != items.length) {
         throw Exception(
           "Upload count mismatch.\n"
-          "Expected: "
-          "${items.length}\n"
-          "Uploaded: "
-          "$uploaded",
+              "Expected: ${items.length}\n"
+              "Uploaded: $uploaded",
         );
       }
 
-      // ======================================================
+      // ========================================================
       // UPDATE STORE
-      // ======================================================
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Updating store information...";
+          currentStage =
+          "Updating store information...";
 
-          status = "Updating store information...";
+          status =
+          "Updating store information...";
 
           progress = 0.98;
         });
       }
 
-      await storeRef.set({
-        "inventoryCount": items.length,
+      await storeRef.set(
+        {
+          "inventoryCount":
+          items.length,
+          "inventoryUpdatedAt":
+          FieldValue.serverTimestamp(),
+          "inventoryAvailable":
+          true,
+          "inventoryFileName":
+          file.name,
+        },
+        SetOptions(merge: true),
+      );
 
-        "inventoryUpdatedAt": FieldValue.serverTimestamp(),
-
-        "inventoryAvailable": true,
-
-        "inventoryFileName": file.name,
-      }, SetOptions(merge: true));
-
-      // ======================================================
+      // ========================================================
       // FINAL VERIFICATION
-      // ======================================================
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          currentStage = "Verifying inventory...";
+          currentStage =
+          "Verifying inventory...";
 
-          status = "Verifying Firebase inventory...";
+          status =
+          "Verifying Firebase inventory...";
 
           progress = 0.99;
         });
       }
 
-      final firebaseCount = await _verifyInventory(inventoryRef);
+      final firebaseCount =
+      await _verifyInventory(
+        inventoryRef,
+      );
 
       debugPrint("=================================");
 
-      debugPrint("FIREBASE VERIFICATION");
-
       debugPrint(
-        "EXPECTED: "
-        "${items.length}",
+        "FIREBASE VERIFICATION",
       );
 
       debugPrint(
-        "FIREBASE: "
-        "$firebaseCount",
+        "EXPECTED: ${items.length}",
+      );
+
+      debugPrint(
+        "FIREBASE: $firebaseCount",
       );
 
       debugPrint("=================================");
@@ -1572,14 +1577,14 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       if (firebaseCount != items.length) {
         throw Exception(
           "Firebase verification failed.\n"
-          "Expected: ${items.length}\n"
-          "Firebase: $firebaseCount",
+              "Expected: ${items.length}\n"
+              "Firebase: $firebaseCount",
         );
       }
 
-      // ======================================================
+      // ========================================================
       // SUCCESS
-      // ======================================================
+      // ========================================================
 
       if (!mounted) {
         return;
@@ -1588,7 +1593,8 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
       setState(() {
         uploading = false;
 
-        currentStage = "Inventory uploaded successfully ✔";
+        currentStage =
+        "Inventory uploaded successfully ✔";
 
         processedItems = items.length;
 
@@ -1599,7 +1605,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         progress = 1.0;
 
         status =
-            "Inventory uploaded successfully ✔\n\n"
+        "Inventory uploaded successfully ✔\n\n"
             "${items.length} items saved.\n\n"
             "Firebase documents: "
             "$firebaseCount";
@@ -1607,47 +1613,44 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
       debugPrint("=================================");
 
-      debugPrint("STORE INVENTORY UPLOAD SUCCESS");
-
       debugPrint(
-        "UPLOADED ITEMS: "
-        "${items.length}",
+        "STORE INVENTORY UPLOAD SUCCESS",
       );
 
       debugPrint(
-        "FIREBASE DOCUMENTS: "
-        "$firebaseCount",
+        "UPLOADED ITEMS: ${items.length}",
+      );
+
+      debugPrint(
+        "FIREBASE DOCUMENTS: $firebaseCount",
       );
 
       debugPrint(
         "FIREBASE PATH: "
-        "stores/${widget.storeCode}/inventory",
+            "stores/${widget.storeCode}/inventory",
       );
 
       debugPrint(
         "FIELDS: "
-        "name + price + active + updatedAt",
+            "name + price + active + updatedAt",
       );
 
-      debugPrint("QTY FIELD: NOT STORED");
+      debugPrint(
+        "QTY FIELD: NOT STORED",
+      );
 
       debugPrint("=================================");
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "تم تحديث المخزون بنجاح ✔\n"
-            "عدد الأصناف: "
-            "${items.length}",
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-        ),
+      _showMessage(
+        "تم تحديث المخزون بنجاح ✔\n"
+            "عدد الأصناف: ${items.length}",
       );
     } catch (e, stackTrace) {
       debugPrint("=================================");
 
-      debugPrint("STORE INVENTORY UPLOAD FAILED");
+      debugPrint(
+        "STORE INVENTORY UPLOAD FAILED",
+      );
 
       debugPrint("ERROR: $e");
 
@@ -1666,7 +1669,8 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
         currentStage = "Upload failed";
 
-        status = "Upload failed:\n$e";
+        status =
+        "Upload failed:\n$e";
 
         progress = 0;
       });
@@ -1675,13 +1679,53 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
         SnackBar(
           content: Text(
             "حدث خطأ أثناء رفع المخزون:\n"
-            "$e",
+                "$e",
           ),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 8),
+          backgroundColor: omanRed,
+          duration:
+          const Duration(seconds: 8),
+          behavior:
+          SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(
+            borderRadius:
+            BorderRadius.circular(12),
+          ),
+          margin:
+          const EdgeInsets.all(12),
         ),
       );
     }
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: omanGreen,
+          behavior:
+          SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(
+            borderRadius:
+            BorderRadius.circular(12),
+          ),
+          margin:
+          const EdgeInsets.all(12),
+          duration:
+          const Duration(seconds: 5),
+        ),
+      );
   }
 
   // ============================================================
@@ -1696,7 +1740,7 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
     Navigator.pushNamedAndRemoveUntil(
       context,
       Homescreen.routeName,
-      (route) => false,
+          (route) => false,
     );
   }
 
@@ -1707,227 +1751,249 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: pageBackground,
+
+      // ========================================================
+      // APP BAR
+      // ========================================================
 
       appBar: AppBar(
-        backgroundColor: Colors.grey.shade100,
+        backgroundColor: omanRed,
+
+        foregroundColor: Colors.white,
 
         elevation: 0,
+
+        centerTitle: true,
 
         title: const Text(
           "Store Inventory",
           style: TextStyle(
-            color: Color(0xff0050c0),
             fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
         ),
 
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Color(0xff0050c0)),
             tooltip: "Logout",
-            onPressed: uploading ? null : logout,
+            icon: const Icon(
+              Icons.logout_rounded,
+              color: Colors.white,
+            ),
+            onPressed:
+            uploading ? null : logout,
           ),
         ],
       ),
 
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+      body: Column(
+        children: [
+          // ======================================================
+          // OMAN GREEN STRIPE
+          // ======================================================
 
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
+          Container(
+            height: 5,
+            color: omanGreen,
+          ),
 
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.inventory_2,
-                  size: 70,
-                  color: Color(0xff0050c0),
-                ),
+          // ======================================================
+          // MAIN CONTENT
+          // ======================================================
 
-                const SizedBox(height: 15),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                const EdgeInsets.all(14),
 
-                const Text(
-                  "Store Inventory",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xff0050c0),
+                child: ConstrainedBox(
+                  constraints:
+                  const BoxConstraints(
+                    maxWidth: 1000,
+                  ),
+
+                  child: Column(
+                    children: [
+                      // ==========================================
+                      // STORE HEADER
+                      // ==========================================
+
+                      _buildStoreHeader(),
+
+                      const SizedBox(height: 12),
+
+                      // ==========================================
+                      // UPLOAD CARD
+                      // ==========================================
+
+                      _buildUploadCard(),
+
+                      const SizedBox(height: 10),
+
+                      // ==========================================
+                      // INFO CARD
+                      // ==========================================
+
+                      _buildInfoCard(),
+
+                      const SizedBox(height: 10),
+
+                      // ==========================================
+                      // PROGRESS
+                      // ==========================================
+
+                      if (uploading ||
+                          status.isNotEmpty)
+                        _buildProgressCard(),
+
+                      const SizedBox(height: 10),
+
+                      // ==========================================
+                      // VALIDITY
+                      // ==========================================
+
+                      if (widget.expireDate != null)
+                        _buildExpireCard(),
+                    ],
                   ),
                 ),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  "Store: "
-                  "${widget.storeCode}",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 35),
-
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final small = constraints.maxWidth < 750;
-
-                    final uploadCard = _buildUploadCard();
-
-                    final infoCard = _buildInfoCard();
-
-                    if (!small) {
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: uploadCard),
-                          const SizedBox(width: 20),
-                          Expanded(child: infoCard),
-                        ],
-                      );
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        uploadCard,
-                        const SizedBox(height: 20),
-                        infoCard,
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 25),
-
-                if (uploading || status.isNotEmpty) _buildProgressCard(),
-
-                const SizedBox(height: 20),
-
-                if (widget.expireDate != null)
-                  Text(
-                    "Valid Until: "
-                    "${widget.expireDate!.toDate().day}/"
-                    "${widget.expireDate!.toDate().month}/"
-                    "${widget.expireDate!.toDate().year}",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // PROGRESS CARD
+  // STORE HEADER
   // ============================================================
 
-  Widget _buildProgressCard() {
-    final percent = (progress * 100).round();
-
+  Widget _buildStoreHeader() {
     return Card(
-      elevation: 4,
+      margin: EdgeInsets.zero,
 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 1.5,
+
+      color: Colors.white,
+
+      shape: RoundedRectangleBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
 
       child: Padding(
-        padding: const EdgeInsets.all(22),
+        padding:
+        const EdgeInsets.all(16),
 
-        child: Column(
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(
-                  uploading ? Icons.cloud_upload : Icons.check_circle,
-                  size: 32,
-                  color: uploading ? const Color(0xff0050c0) : Colors.green,
-                ),
+            Container(
+              width: 58,
+              height: 58,
 
-                const SizedBox(width: 12),
+              decoration: BoxDecoration(
+                color:
+                omanGreen.withOpacity(0.10),
+                borderRadius:
+                BorderRadius.circular(14),
 
-                Expanded(
-                  child: Text(
-                    currentStage.isEmpty ? status : currentStage,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+              ),
 
-                Text(
-                  "$percent%",
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xff0050c0),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 18),
-
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-
-              child: LinearProgressIndicator(
-                value: progress.clamp(0.0, 1.0),
-
-                minHeight: 12,
-
-                backgroundColor: Colors.grey.shade200,
-
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xff0050c0),
-                ),
+              child: const Icon(
+                Icons.store_rounded,
+                color: omanGreen,
+                size: 31,
               ),
             ),
 
-            const SizedBox(height: 14),
+            const SizedBox(width: 13),
 
-            if (totalItems > 0)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+
                 children: [
-                  Text(
-                    "$processedItems / "
-                    "$totalItems",
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold,
+                  const Text(
+                    "Store Inventory",
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight:
+                      FontWeight.bold,
+                      color: textDark,
                     ),
                   ),
 
-                  if (totalBatches > 0)
-                    Text(
-                      "Batch "
-                      "$currentBatch / "
-                      "$totalBatches",
-                      style: const TextStyle(color: Colors.grey),
+                  const SizedBox(height: 5),
+
+                  Text(
+                    "Store: ${widget.storeCode}",
+                    maxLines: 1,
+                    overflow:
+                    TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: textGrey,
+                      fontSize: 13,
+                      fontWeight:
+                      FontWeight.w600,
                     ),
+                  ),
                 ],
               ),
+            ),
 
-            if (status.isNotEmpty) ...[
-              const SizedBox(height: 10),
+            const SizedBox(width: 8),
 
-              Text(
-                status,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xff0050c0),
-                  fontWeight: FontWeight.bold,
-                ),
+            Container(
+              padding:
+              const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 7,
               ),
-            ],
+
+              decoration: BoxDecoration(
+                color:
+                omanGreen.withOpacity(0.10),
+                borderRadius:
+                BorderRadius.circular(20),
+              ),
+
+              child: Row(
+                mainAxisSize:
+                MainAxisSize.min,
+
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration:
+                    const BoxDecoration(
+                      color: omanGreen,
+                      shape:
+                      BoxShape.circle,
+                    ),
+                  ),
+
+                  const SizedBox(width: 6),
+
+                  const Text(
+                    "Firebase",
+                    style: TextStyle(
+                      color: omanGreen,
+                      fontSize: 11,
+                      fontWeight:
+                      FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1940,75 +2006,138 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
   Widget _buildUploadCard() {
     return Card(
-      elevation: 4,
+      margin: EdgeInsets.zero,
 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 1.5,
+
+      color: Colors.white,
+
+      shape: RoundedRectangleBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
 
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding:
+        const EdgeInsets.all(14),
 
         child: Row(
           children: [
-            Icon(
-              uploading ? Icons.sync : Icons.upload_file,
+            Container(
+              width: 55,
+              height: 55,
 
-              size: 55,
+              decoration: BoxDecoration(
+                color:
+                omanGreen.withOpacity(0.10),
+                borderRadius:
+                BorderRadius.circular(13),
 
-              color: uploading ? Colors.orange : const Color(0xff0050c0),
+              ),
+
+              child: Icon(
+                uploading
+                    ? Icons.sync_rounded
+                    : Icons.upload_file_rounded,
+                color: uploading
+                    ? omanRed
+                    : omanGreen,
+                size: 29,
+              ),
             ),
 
-            const SizedBox(width: 18),
+            const SizedBox(width: 12),
 
-            const Expanded(
+            Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+
                 children: [
-                  Text(
+                  const Text(
                     "Upload Inventory",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight:
+                      FontWeight.bold,
+                      color: textDark,
+                    ),
                   ),
 
-                  SizedBox(height: 7),
+                  const SizedBox(height: 5),
 
-                  Text(
+                  const Text(
                     "Excel / PDF / CSV",
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(
+                      color: textGrey,
+                      fontSize: 12,
+                    ),
                   ),
 
-                  SizedBox(height: 5),
+                  const SizedBox(height: 4),
 
-                  Text(
+                  const Text(
                     "Item Name + Price",
                     style: TextStyle(
-                      color: Color(0xff0050c0),
-                      fontWeight: FontWeight.bold,
+                      color: omanGreen,
+                      fontSize: 12,
+                      fontWeight:
+                      FontWeight.bold,
                     ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
 
             ElevatedButton(
-              onPressed: uploading ? null : uploadInventory,
+              onPressed:
+              uploading
+                  ? null
+                  : uploadInventory,
 
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xff0050c0),
+              style:
+              ElevatedButton.styleFrom(
+                backgroundColor: omanRed,
 
-                foregroundColor: Colors.white,
+                foregroundColor:
+                Colors.white,
 
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 14,
+                disabledBackgroundColor:
+                Colors.grey.shade300,
+
+                disabledForegroundColor:
+                Colors.grey.shade600,
+
+                elevation: 0,
+
+                padding:
+                const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
 
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                shape:
+                RoundedRectangleBorder(
+                  borderRadius:
+                  BorderRadius.circular(10),
                 ),
               ),
 
-              child: Text(uploading ? "Uploading..." : "Upload"),
+              child: Text(
+                uploading
+                    ? "Uploading..."
+                    : "Upload",
+                style: const TextStyle(
+                  fontWeight:
+                  FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ],
         ),
@@ -2022,49 +2151,429 @@ class _StoreInventoryScreenState extends State<StoreInventoryScreen> {
 
   Widget _buildInfoCard() {
     return Card(
-      elevation: 4,
+      margin: EdgeInsets.zero,
 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 1.5,
+
+      color: Colors.white,
+
+      shape: RoundedRectangleBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
 
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding:
+        const EdgeInsets.all(14),
 
         child: Row(
           children: [
-            const Icon(Icons.cloud_upload, size: 55, color: Color(0xff0050c0)),
+            Container(
+              width: 55,
+              height: 55,
 
-            const SizedBox(width: 18),
+              decoration: BoxDecoration(
+                color:
+                omanRed.withOpacity(0.08),
+                borderRadius:
+                BorderRadius.circular(13),
+              ),
+
+              child: const Icon(
+                Icons.cloud_done_rounded,
+                color: omanRed,
+                size: 29,
+              ),
+            ),
+
+            const SizedBox(width: 12),
 
             const Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+
                 children: [
                   Text(
                     "Firebase Inventory",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-
-                  SizedBox(height: 7),
-
-                  Text(
-                    "Only item name and price are stored.",
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight:
+                      FontWeight.bold,
+                      color: textDark,
+                    ),
                   ),
 
                   SizedBox(height: 5),
 
                   Text(
+                    "Only item name and price are stored.",
+                    style: TextStyle(
+                      color: textGrey,
+                      fontSize: 12,
+                    ),
+                  ),
+
+                  SizedBox(height: 4),
+
+                  Text(
                     "Quantity is not required.",
                     style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
+                      color: omanGreen,
+                      fontSize: 12,
+                      fontWeight:
+                      FontWeight.bold,
                     ),
                   ),
                 ],
               ),
             ),
+
+            Container(
+              padding:
+              const EdgeInsets.symmetric(
+                horizontal: 9,
+                vertical: 6,
+              ),
+
+              decoration: BoxDecoration(
+                color:
+                omanGreen.withOpacity(0.10),
+                borderRadius:
+                BorderRadius.circular(20),
+              ),
+
+              child: const Text(
+                "READY",
+                style: TextStyle(
+                  color: omanGreen,
+                  fontSize: 10,
+                  fontWeight:
+                  FontWeight.bold,
+                ),
+              ),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PROGRESS CARD
+  // ============================================================
+
+  Widget _buildProgressCard() {
+    final percent =
+    (progress * 100).round();
+
+    final isSuccess =
+        !uploading &&
+            progress >= 1.0 &&
+            status.contains("successfully");
+
+    final isFailed =
+        !uploading &&
+            status.toLowerCase().contains(
+              "failed",
+            );
+
+    final Color statusColor =
+    isFailed
+        ? omanRed
+        : isSuccess
+        ? omanGreen
+        : omanRed;
+
+    return Card(
+      margin: EdgeInsets.zero,
+
+      elevation: 1.5,
+
+      color: Colors.white,
+
+      shape: RoundedRectangleBorder(
+        borderRadius:
+        BorderRadius.circular(16),
+        side: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+
+      child: Padding(
+        padding:
+        const EdgeInsets.all(16),
+
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 45,
+                  height: 45,
+
+                  decoration: BoxDecoration(
+                    color:
+                    statusColor.withOpacity(
+                      0.10,
+                    ),
+                    borderRadius:
+                    BorderRadius.circular(
+                      11,
+                    ),
+                  ),
+
+                  child: Icon(
+                    uploading
+                        ? Icons.sync_rounded
+                        : isFailed
+                        ? Icons
+                        .error_outline_rounded
+                        : Icons
+                        .check_circle_rounded,
+                    color: statusColor,
+                    size: 25,
+                  ),
+                ),
+
+                const SizedBox(width: 11),
+
+                Expanded(
+                  child: Text(
+                    currentStage.isEmpty
+                        ? status
+                        : currentStage,
+                    maxLines: 2,
+                    overflow:
+                    TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight:
+                      FontWeight.bold,
+                      color: textDark,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                Text(
+                  "$percent%",
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                    FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 15),
+
+            ClipRRect(
+              borderRadius:
+              BorderRadius.circular(10),
+
+              child:
+              LinearProgressIndicator(
+                value:
+                progress.clamp(
+                  0.0,
+                  1.0,
+                ),
+
+                minHeight: 11,
+
+                backgroundColor:
+                Colors.grey.shade200,
+
+                valueColor:
+                AlwaysStoppedAnimation<
+                    Color>(
+                  statusColor,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            if (totalItems > 0)
+              Row(
+                mainAxisAlignment:
+                MainAxisAlignment
+                    .spaceBetween,
+
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons
+                            .inventory_2_outlined,
+                        size: 15,
+                        color: omanGreen,
+                      ),
+
+                      const SizedBox(width: 5),
+
+                      Text(
+                        "$processedItems / "
+                            "$totalItems",
+                        style:
+                        const TextStyle(
+                          color: textGrey,
+                          fontSize: 12,
+                          fontWeight:
+                          FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (totalBatches > 0)
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons
+                              .layers_outlined,
+                          size: 15,
+                          color: textGrey,
+                        ),
+
+                        const SizedBox(width: 5),
+
+                        Text(
+                          "Batch "
+                              "$currentBatch / "
+                              "$totalBatches",
+                          style:
+                          const TextStyle(
+                            color: textGrey,
+                            fontSize: 12,
+                            fontWeight:
+                            FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+
+            if (status.isNotEmpty) ...[
+              const SizedBox(height: 10),
+
+              Container(
+                width: double.infinity,
+
+                padding:
+                const EdgeInsets.all(10),
+
+                decoration: BoxDecoration(
+                  color:
+                  statusColor.withOpacity(
+                    0.06,
+                  ),
+                  borderRadius:
+                  BorderRadius.circular(
+                    10,
+                  ),
+                ),
+
+                child: Text(
+                  status,
+                  textAlign:
+                  TextAlign.center,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight:
+                    FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // EXPIRY CARD
+  // ============================================================
+
+  Widget _buildExpireCard() {
+    final date =
+    widget.expireDate!.toDate();
+
+    return Container(
+      width: double.infinity,
+
+      padding:
+      const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
+
+      decoration: BoxDecoration(
+        color: Colors.white,
+
+        borderRadius:
+        BorderRadius.circular(12),
+
+
+      ),
+
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+
+            decoration: BoxDecoration(
+              color:
+              omanRed.withOpacity(0.08),
+              borderRadius:
+              BorderRadius.circular(9),
+            ),
+
+            child: const Icon(
+              Icons.event_available_rounded,
+              size: 17,
+              color: omanRed,
+            ),
+          ),
+
+          const SizedBox(width: 9),
+
+          const Text(
+            "Valid Until",
+            style: TextStyle(
+              color: textGrey,
+              fontSize: 12,
+              fontWeight:
+              FontWeight.w600,
+            ),
+          ),
+
+          const Spacer(),
+
+          Text(
+            "${date.day.toString().padLeft(2, '0')}/"
+                "${date.month.toString().padLeft(2, '0')}/"
+                "${date.year}",
+
+            style: const TextStyle(
+              color: omanRed,
+              fontSize: 13,
+              fontWeight:
+              FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
