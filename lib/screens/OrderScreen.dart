@@ -2537,6 +2537,12 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildWarehouseCard() {
+    final String whatsappNumber =
+        selectedWarehouse?["whatsapp"]?.toString().trim() ?? "";
+
+    final String warehouseName =
+        selectedWarehouse?["name"]?.toString().trim() ?? "";
+
     return _card(
       child: Column(
         children: [
@@ -2575,104 +2581,190 @@ class _OrderScreenState extends State<OrderScreen> {
                     SizedBox(height: 3),
                     Text(
                       "Choose where the order will be supplied from.",
-                      style: TextStyle(color: textMuted, fontSize: 10),
+                      style: TextStyle(
+                        color: textMuted,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
               ),
               if (orderRows.isNotEmpty)
-                _countBadge("${orderRows.length}", omanGreen),
+                _countBadge(
+                  "${orderRows.length}",
+                  omanGreen,
+                ),
             ],
           ),
+
           const SizedBox(height: 13),
+
           loadingWarehouses
               ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: omanGreen,
-                    ),
-                  ),
-                )
+            padding: EdgeInsets.all(12),
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: omanGreen,
+              ),
+            ),
+          )
               : DropdownButtonFormField<String>(
-                  value: selectedWarehouseId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: "Warehouse",
-                    labelStyle: const TextStyle(fontSize: 12, color: textMuted),
-                    prefixIcon: const Icon(
-                      Icons.warehouse_outlined,
-                      color: omanGreen,
-                      size: 19,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xffF8FAFD),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 11,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.grey.shade200),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                        color: omanGreen,
-                        width: 1.4,
-                      ),
-                    ),
-                  ),
-                  hint: const Text(
-                    "Choose Warehouse",
-                    style: TextStyle(fontSize: 12),
-                  ),
-                  items: warehouses.map((warehouse) {
-                    return DropdownMenuItem<String>(
-                      value: warehouse["id"].toString(),
-                      child: Text(
-                        warehouse["name"].toString(),
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) async {
-                    if (value == null) {
-                      return;
-                    }
-
-                    final warehouse = warehouses.firstWhere(
-                      (w) => w["id"].toString() == value,
-                      orElse: () => <String, dynamic>{},
-                    );
-
-                    setState(() {
-                      selectedWarehouseId = value;
-
-                      selectedWarehouse = warehouse;
-
-                      orderRows.clear();
-
-                      warehouseSearchResults.clear();
-
-                      selectedItems.clear();
-
-                      generatedFileBytes = null;
-
-                      statusText = "Loading warehouse inventory...";
-                    });
-
-                    await loadWarehouseItems(value);
-                  },
+            value: selectedWarehouseId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: "Warehouse",
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                color: textMuted,
+              ),
+              prefixIcon: const Icon(
+                Icons.warehouse_outlined,
+                color: omanGreen,
+                size: 19,
+              ),
+              filled: true,
+              fillColor: const Color(0xffF8FAFD),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 11,
+                vertical: 11,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Colors.grey.shade200,
                 ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: Colors.grey.shade200,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: omanGreen,
+                  width: 1.4,
+                ),
+              ),
+            ),
+            hint: const Text(
+              "Choose Warehouse",
+              style: TextStyle(fontSize: 12),
+            ),
+            items: warehouses.map((warehouse) {
+              return DropdownMenuItem<String>(
+                value: warehouse["id"].toString(),
+                child: Text(
+                  warehouse["name"].toString(),
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              );
+            }).toList(),
+            onChanged: (value) async {
+              if (value == null) {
+                return;
+              }
+
+              final warehouse = warehouses.firstWhere(
+                    (w) => w["id"].toString() == value,
+                orElse: () => <String, dynamic>{},
+              );
+
+              setState(() {
+                selectedWarehouseId = value;
+
+                selectedWarehouse = warehouse;
+
+                orderRows.clear();
+
+                warehouseSearchResults.clear();
+
+                selectedItems.clear();
+
+                generatedFileBytes = null;
+
+                statusText = "Loading warehouse inventory...";
+              });
+
+              await loadWarehouseItems(value);
+            },
+          ),
+
+          if (selectedWarehouseId != null &&
+              whatsappNumber.isNotEmpty) ...[
+            const SizedBox(height: 10),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(.06),
+                borderRadius: BorderRadius.circular(10),
+
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.phone,
+                      color: Colors.green,
+                      size: 18,
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          warehouseName.isEmpty
+                              ? "Warehouse WhatsApp"
+                              : "$warehouseName WhatsApp",
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          whatsappNumber,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.green,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

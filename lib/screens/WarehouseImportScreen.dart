@@ -1068,11 +1068,11 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              "تم الرفع ولكن العدد "
-              "غير مطابق.\n"
-              "المطلوب: ${items.length} | "
-              "الموجود: "
-              "${verifySnapshot.docs.length}",
+              "Uploaded successfully, but the quantity "
+                  "does not match.\n"
+                  "Required: ${items.length} | "
+                  "Found: "
+                  "${verifySnapshot.docs.length}",
             ),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 7),
