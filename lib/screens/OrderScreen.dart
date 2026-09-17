@@ -43,6 +43,7 @@ class _OrderScreenState extends State<OrderScreen> {
   static const Color danger = omanRed;
 
   static const double cardRadius = 15;
+  static const double matchThreshold = 60;
 
   late final String storeCode = widget.storeCode;
 
@@ -56,7 +57,7 @@ class _OrderScreenState extends State<OrderScreen> {
   // WAREHOUSE INVENTORY
   // ============================================================
 
-  List<List<String>> orderRows = [];
+  List<Map<String, dynamic>> orderRows = [];
 
   // ============================================================
   // GENERATED FILE
@@ -66,7 +67,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
   bool isGenerating = false;
   bool isSavingFile = false;
-
 
   String? inventoryFileName;
 
@@ -261,6 +261,26 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
+  // SAVE DRUG DETAILS ITEMS
+  // ============================================================
+
+  Future<void> saveDrugDetailsItems() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final encoded = drugDetailsItems.map((item) => jsonEncode(item)).toList();
+
+      await prefs.setStringList("drug_details_order_items", encoded);
+
+      debugPrint("DRUG DETAILS ITEMS SAVED = ${encoded.length}");
+    } catch (e) {
+      debugPrint("ERROR SAVING DRUG DETAILS ITEMS: $e");
+
+      rethrow;
+    }
+  }
+
+  // ============================================================
   // CLEAR DRUG DETAILS
   // ============================================================
 
@@ -270,15 +290,266 @@ class _OrderScreenState extends State<OrderScreen> {
 
       await prefs.remove("drug_details_order_items");
 
-      if (!mounted) return;
+      if (mounted) {
+        setState(() {
+          drugDetailsItems.clear();
+        });
+      }
+    } catch (_) {
+      // لا نوقف نجاح حفظ الملف لو فشل حذف Drug Details Items
+    }
+  }
+
+  // ============================================================
+  // DRUG DETAILS WAREHOUSE MATCH
+  // ============================================================
+
+  bool _isDrugDetailsForSelectedWarehouse(Map<String, dynamic> item) {
+    if (selectedWarehouseId == null) {
+      return false;
+    }
+
+    final selectedId = selectedWarehouseId!.trim().toLowerCase();
+
+    final selectedName =
+        selectedWarehouse?["name"]?.toString().trim().toLowerCase() ?? "";
+
+    final possibleWarehouseValues = [
+      item["warehouse"],
+      item["warehouseId"],
+      item["warehouseName"],
+      item["storeId"],
+      item["storeName"],
+    ];
+
+    final values = possibleWarehouseValues
+        .where((value) => value != null)
+        .map((value) => value.toString().trim().toLowerCase())
+        .where((value) => value.isNotEmpty)
+        .toList();
+
+    if (values.isEmpty) {
+      return true;
+    }
+
+    return values.any(
+      (value) =>
+          value == selectedId ||
+          (selectedName.isNotEmpty && value == selectedName),
+    );
+  }
+
+  // ============================================================
+  // VISIBLE DRUG DETAILS
+  // ============================================================
+
+  List<Map<String, dynamic>> get visibleDrugDetailsItems {
+    if (selectedWarehouseId == null) {
+      return [];
+    }
+
+    return drugDetailsItems.where(_isDrugDetailsForSelectedWarehouse).toList();
+  }
+
+  // ============================================================
+  // EDIT DRUG DETAILS QTY
+  // ============================================================
+
+  Future<void> editDrugDetailsQuantity(Map<String, dynamic> item) async {
+    final controller = TextEditingController(
+      text: _toInt(item["qty"]).toString(),
+    );
+
+    final stock = item["stock"] == null ? null : _toInt(item["stock"]);
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.edit_rounded, color: omanGreen),
+              SizedBox(width: 8),
+              Text(
+                "Edit Quantity",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item["item"]?.toString() ?? "",
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textDark,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: "Quantity",
+                  prefixIcon: const Icon(
+                    Icons.production_quantity_limits,
+                    color: omanGreen,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xffF8FAFD),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              if (stock != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  "Stock: $stock",
+                  style: const TextStyle(fontSize: 11, color: textMuted),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final qty = int.tryParse(controller.text.trim());
+
+                if (qty == null || qty <= 0) {
+                  return;
+                }
+
+                if (stock != null && qty > stock) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Quantity cannot exceed stock ($stock)."),
+                      backgroundColor: omanRed,
+                    ),
+                  );
+
+                  return;
+                }
+
+                Navigator.pop(context, qty);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: omanGreen,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    try {
+      final originalIndex = drugDetailsItems.indexOf(item);
+
+      if (originalIndex < 0) {
+        return;
+      }
 
       setState(() {
-        drugDetailsItems.clear();
+        drugDetailsItems[originalIndex]["qty"] = result;
+
+        generatedFileBytes = null;
       });
 
-      _showMessage("Drug Details items cleared.");
+      await saveDrugDetailsItems();
+
+      if (mounted) {
+        setState(() {
+          statusText = "Drug Details quantity updated ✔";
+        });
+      }
+
+      _showMessage("Quantity updated successfully.");
     } catch (e) {
-      _showMessage("Could not clear Drug Details items: $e");
+      _showMessage("Could not save quantity: $e");
+    }
+  }
+
+  // ============================================================
+  // DELETE DRUG DETAILS ITEM
+  // ============================================================
+
+  Future<void> deleteDrugDetailsItem(Map<String, dynamic> item) async {
+    final name = item["item"]?.toString() ?? "this item";
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "Delete Item?",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Text("Remove \"$name\" from Drug Details order?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel", style: TextStyle(color: textMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: omanRed,
+                foregroundColor: Colors.white,
+                elevation: 0,
+              ),
+              child: const Text("Delete"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    try {
+      setState(() {
+        drugDetailsItems.remove(item);
+        generatedFileBytes = null;
+      });
+
+      await saveDrugDetailsItems();
+
+      if (mounted) {
+        setState(() {
+          statusText = "Drug Details item deleted ✔";
+        });
+      }
+
+      _showMessage("Drug Details item deleted.");
+    } catch (e) {
+      _showMessage("Could not delete item: $e");
     }
   }
 
@@ -320,6 +591,125 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
+  // STOCK
+  // ============================================================
+
+  dynamic _getStock(dynamic data) {
+    if (data is! Map) {
+      return null;
+    }
+
+    const keys = [
+      "stock",
+      "quantity",
+      "qty",
+      "availableQuantity",
+      "availableStock",
+      "currentStock",
+      "balance",
+      "onHand",
+    ];
+
+    for (final key in keys) {
+      if (!data.containsKey(key)) {
+        continue;
+      }
+
+      final value = data[key];
+
+      if (value == null) {
+        continue;
+      }
+
+      if (value is num) {
+        return value.toInt();
+      }
+
+      final parsed = int.tryParse(value.toString().replaceAll(",", "").trim());
+
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // OFFER
+  // ============================================================
+
+  String _getOfferText(dynamic data) {
+    if (data is! Map) {
+      return "";
+    }
+
+    const keys = [
+      "offer",
+      "offers",
+      "offerText",
+      "promotion",
+      "promotions",
+      "discountOffer",
+      "specialOffer",
+      "promo",
+    ];
+
+    for (final key in keys) {
+      if (!data.containsKey(key)) {
+        continue;
+      }
+
+      final value = data[key];
+
+      final formatted = _formatOfferValue(value);
+
+      if (formatted.isNotEmpty) {
+        return formatted;
+      }
+    }
+
+    return "";
+  }
+
+  String _formatOfferValue(dynamic value) {
+    if (value == null) {
+      return "";
+    }
+
+    if (value is String) {
+      return value.trim();
+    }
+
+    if (value is num || value is bool) {
+      return value.toString();
+    }
+
+    if (value is List) {
+      return value
+          .map(_formatOfferValue)
+          .where((x) => x.isNotEmpty)
+          .join(" / ");
+    }
+
+    if (value is Map) {
+      final parts = <String>[];
+
+      value.forEach((key, val) {
+        final formatted = _formatOfferValue(val);
+
+        if (formatted.isNotEmpty) {
+          parts.add("${key.toString()}: $formatted");
+        }
+      });
+
+      return parts.join(" | ");
+    }
+
+    return value.toString().trim();
+  }
+
+  // ============================================================
   // LOAD WAREHOUSE INVENTORY
   // ============================================================
 
@@ -342,7 +732,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final snap = await inventoryRef.get();
 
-      final loadedRows = <List<String>>[];
+      final loadedRows = <Map<String, dynamic>>[];
 
       for (final doc in snap.docs) {
         final data = doc.data();
@@ -353,21 +743,16 @@ class _OrderScreenState extends State<OrderScreen> {
           continue;
         }
 
-        double price = 0;
+        final price = _toDouble(data["price"]);
 
-        final rawPrice = data["price"];
-
-        if (rawPrice is num) {
-          price = rawPrice.toDouble();
-        } else {
-          price =
-              double.tryParse(
-                rawPrice?.toString().replaceAll(",", "").trim() ?? "",
-              ) ??
-              0;
-        }
-
-        loadedRows.add([name, "0", price.toString(), price.toString()]);
+        loadedRows.add({
+          "id": doc.id,
+          "name": name,
+          "purchase": price,
+          "sale": price,
+          "stock": _getStock(data),
+          "offer": _getOfferText(data),
+        });
       }
 
       if (!mounted) return;
@@ -442,15 +827,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
       setState(() {
         inventoryRows = rows;
-
         inventoryFileName = file.name;
-
         generatedFileBytes = null;
-
         warehouseSearchResults.clear();
-
         selectedItems.clear();
-
         statusText = "Missing Items Loaded Successfully ✔";
       });
 
@@ -587,6 +967,22 @@ class _OrderScreenState extends State<OrderScreen> {
 
     value = value.replaceAll(RegExp(r'\binjections?\b'), 'inj');
 
+    value = value.replaceAll(RegExp(r'\bsyrup\b'), 'syr');
+
+    value = value.replaceAll(RegExp(r'\bsyp\b'), 'syr');
+
+    value = value.replaceAll(RegExp(r'\bcream\b'), 'crm');
+
+    value = value.replaceAll(RegExp(r'\bointment\b'), 'oint');
+
+    value = value.replaceAll(RegExp(r'\bsuspension\b'), 'susp');
+
+    value = value.replaceAll(RegExp(r'\bsolution\b'), 'sol');
+
+    value = value.replaceAll(RegExp(r'\bdrops?\b'), 'drop');
+
+    value = value.replaceAll(RegExp(r'\bsachets?\b'), 'sach');
+
     return value.trim();
   }
 
@@ -663,9 +1059,7 @@ class _OrderScreenState extends State<OrderScreen> {
           continue;
         }
 
-        final wordB = wordsB[i];
-
-        final score = wordSimilaritySimple(wordA, wordB);
+        final score = wordSimilaritySimple(wordA, wordsB[i]);
 
         if (score > best) {
           best = score;
@@ -743,16 +1137,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
       double bestScore = 0;
 
-      String bestWarehouseItem = "";
-
-      List<String>? bestWarehouseRow;
+      Map<String, dynamic>? bestWarehouse;
 
       for (final warehouse in orderRows) {
-        if (warehouse.isEmpty) {
-          continue;
-        }
-
-        final warehouseItem = warehouse[0].trim();
+        final warehouseItem = warehouse["name"]?.toString().trim() ?? "";
 
         if (warehouseItem.isEmpty) {
           continue;
@@ -763,36 +1151,23 @@ class _OrderScreenState extends State<OrderScreen> {
         if (score > bestScore) {
           bestScore = score;
 
-          bestWarehouseItem = warehouseItem;
-
-          bestWarehouseRow = warehouse;
+          bestWarehouse = warehouse;
         }
       }
 
-      if (bestScore >= 60 && bestWarehouseRow != null) {
-        double purchase = 0;
-        double sale = 0;
-
-        if (bestWarehouseRow.length >= 3) {
-          purchase =
-              double.tryParse(bestWarehouseRow[2].replaceAll(",", "").trim()) ??
-              0;
-        }
-
-        if (bestWarehouseRow.length >= 4) {
-          sale =
-              double.tryParse(
-                bestWarehouseRow[3].replaceAll(",", "").trim(),
-              ) ?? 0;
-        }
+      if (bestScore >= matchThreshold && bestWarehouse != null) {
+        final bestWarehouseItem = bestWarehouse["name"]?.toString() ?? "";
 
         results.add({
           "item": item,
           "qty": qty,
           "matchedItem": bestWarehouseItem,
           "score": bestScore,
-          "purchase": purchase,
-          "sale": sale,
+          "purchase": _toDouble(bestWarehouse["purchase"]),
+          "sale": _toDouble(bestWarehouse["sale"]),
+          "stock": bestWarehouse["stock"],
+          "offer": bestWarehouse["offer"]?.toString() ?? "",
+          "itemId": bestWarehouse["id"]?.toString() ?? "",
           "warehouseId": selectedWarehouseId,
           "warehouseName":
               selectedWarehouse?["name"]?.toString() ??
@@ -843,10 +1218,23 @@ class _OrderScreenState extends State<OrderScreen> {
       return;
     }
 
+    final stock = result["stock"];
+
+    final qty = _toInt(result["qty"]);
+
+    if (stock != null && qty > _toInt(stock)) {
+      _showMessage(
+        "Requested quantity ($qty) exceeds stock (${_toInt(stock)}).",
+      );
+      return;
+    }
+
     setState(() {
       selectedItems.add({...result, "added": true});
 
       result["added"] = true;
+
+      generatedFileBytes = null;
     });
 
     _showMessage("${result["item"]} added ✔");
@@ -865,6 +1253,8 @@ class _OrderScreenState extends State<OrderScreen> {
       );
 
       result["added"] = false;
+
+      generatedFileBytes = null;
     });
   }
 
@@ -920,7 +1310,9 @@ class _OrderScreenState extends State<OrderScreen> {
               ),
             )
           else if (warehouseSearchResults.isEmpty)
-            _emptyBox("No items matched at 60% or higher.")
+            _emptyBox(
+              "No items matched at ${matchThreshold.toStringAsFixed(0)}% or higher.",
+            )
           else
             ...warehouseSearchResults.map((result) => _buildMatchRow(result)),
         ],
@@ -933,9 +1325,17 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildMatchRow(Map<String, dynamic> result) {
-    final score = result["score"] as double;
+    final score = _toDouble(result["score"]);
 
     final added = result["added"] == true;
+
+    final stock = result["stock"];
+
+    final offer = result["offer"]?.toString() ?? "";
+
+    final sale = _toDouble(result["sale"]);
+
+    final qty = _toInt(result["qty"]);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -1002,14 +1402,18 @@ class _OrderScreenState extends State<OrderScreen> {
                   spacing: 6,
                   runSpacing: 5,
                   children: [
-                    _smallBadge(
-                      Icons.production_quantity_limits,
-                      "Qty ${result["qty"]}",
-                    ),
+                    _smallBadge(Icons.production_quantity_limits, "Qty $qty"),
                     _smallBadge(
                       Icons.payments_outlined,
-                      "${result["sale"]} OMR",
+                      "${sale.toStringAsFixed(3)} OMR",
                     ),
+                    if (stock != null)
+                      _smallBadge(
+                        Icons.inventory_2_outlined,
+                        "Stock ${_toInt(stock)}",
+                      ),
+                    if (offer.isNotEmpty)
+                      _smallBadge(Icons.local_offer_outlined, offer),
                   ],
                 ),
               ],
@@ -1077,6 +1481,10 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget buildDrugDetailsItemsCard() {
+    if (selectedWarehouseId == null) {
+      return const SizedBox.shrink();
+    }
+
     if (loadingDrugDetailsItems) {
       return _card(
         child: const Row(
@@ -1096,41 +1504,52 @@ class _OrderScreenState extends State<OrderScreen> {
       );
     }
 
+    final visibleItems = visibleDrugDetailsItems;
+
+    final total = _calculateDrugDetailsTotal(visibleItems);
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.medication_rounded, color: omanGreen, size: 20),
-              const SizedBox(width: 8),
+              _iconBox(Icons.medication_rounded, omanGreen),
+              const SizedBox(width: 9),
               const Expanded(
-                child: Text(
-                  "Drug Details Items",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: textDark,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Drug Details Items",
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: textDark,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      "Items selected from Drug Details for this warehouse.",
+                      style: TextStyle(fontSize: 10, color: textMuted),
+                    ),
+                  ],
                 ),
               ),
-              _countBadge("${drugDetailsItems.length}", omanGreen),
+              _countBadge("${visibleItems.length}", omanGreen),
             ],
           ),
-          const SizedBox(height: 10),
-          const Text(
-            "These items come from Drug Details and will be placed in a separate Excel sheet.",
-            style: TextStyle(color: textMuted, fontSize: 11),
-          ),
-          const SizedBox(height: 11),
-          if (drugDetailsItems.isEmpty)
-            _emptyBox("No Drug Details items added.")
+          const SizedBox(height: 12),
+          if (visibleItems.isEmpty)
+            _emptyBox("No Drug Details items for this warehouse.")
           else
-            ...drugDetailsItems.asMap().entries.map(
+            ...visibleItems.asMap().entries.map(
               (entry) => _buildDrugDetailsRow(entry.value, entry.key),
             ),
-          if (drugDetailsItems.isNotEmpty) ...[
-            const SizedBox(height: 7),
+          if (visibleItems.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildDrugDetailsTotalCard(total),
+            const SizedBox(height: 9),
             SizedBox(
               width: double.infinity,
               height: 37,
@@ -1138,7 +1557,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 onPressed: clearDrugDetailsItems,
                 icon: const Icon(Icons.delete_outline, size: 17),
                 label: const Text(
-                  "Clear Drug Details Items",
+                  "Clear All Drug Details Items",
                   style: TextStyle(fontSize: 12),
                 ),
                 style: OutlinedButton.styleFrom(
@@ -1163,28 +1582,37 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget _buildDrugDetailsRow(Map<String, dynamic> item, int index) {
     final name = item["item"]?.toString() ?? "";
 
-    final qty = item["qty"]?.toString() ?? "0";
+    final qty = _toInt(item["qty"]);
 
     final warehouse = item["warehouse"]?.toString() ?? "";
 
     final matched = item["matchedItem"]?.toString() ?? "";
 
-    final score = double.tryParse(item["matchPercent"]?.toString() ?? "") ?? 0;
+    final score = _toDouble(item["matchPercent"]);
 
-    final price = double.tryParse(item["sale"]?.toString() ?? "") ?? 0;
+    final purchase = _toDouble(item["purchase"]);
+
+    final sale = _toDouble(item["sale"]);
+
+    final total = sale * qty;
+
+    final stock = item["stock"];
+
+    final offer = item["offer"]?.toString() ?? "";
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 7),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: const Color(0xffF8FAFD),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(11),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               color: omanGreen.withOpacity(.08),
               shape: BoxShape.circle,
@@ -1207,21 +1635,15 @@ class _OrderScreenState extends State<OrderScreen> {
               children: [
                 Text(
                   name,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
+                    color: textDark,
                   ),
                 ),
                 const SizedBox(height: 3),
-                if (warehouse.isNotEmpty)
-                  Text(
-                    "Warehouse: $warehouse",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10, color: textMuted),
-                  ),
                 if (matched.isNotEmpty)
                   Text(
                     "Matched: $matched",
@@ -1229,6 +1651,39 @@ class _OrderScreenState extends State<OrderScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: textMuted, fontSize: 10),
                   ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
+                  children: [
+                    _smallBadge(Icons.production_quantity_limits, "Qty $qty"),
+                    _smallBadge(
+                      Icons.shopping_cart_outlined,
+                      "Sale ${sale.toStringAsFixed(3)}",
+                    ),
+                    if (stock != null)
+                      _smallBadge(
+                        Icons.inventory_2_outlined,
+                        "Stock ${_toInt(stock)}",
+                      ),
+                    if (offer.isNotEmpty)
+                      _smallBadge(Icons.local_offer_outlined, offer),
+                    if (score > 0)
+                      _smallBadge(
+                        Icons.compare_arrows_rounded,
+                        "${score.toStringAsFixed(0)}%",
+                      ),
+                  ],
+                ),
+                if (warehouse.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    "Warehouse: $warehouse",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9, color: textMuted),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1236,25 +1691,128 @@ class _OrderScreenState extends State<OrderScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                "Qty: $qty",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                ),
+              const Text(
+                "Total",
+                style: TextStyle(color: textMuted, fontSize: 9),
               ),
               const SizedBox(height: 2),
               Text(
-                "${price.toStringAsFixed(3)} OMR",
-                style: const TextStyle(color: omanGreen, fontSize: 10),
+                "${total.toStringAsFixed(3)} OMR",
+                style: const TextStyle(
+                  color: omanGreen,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              Text(
-                "${score.toStringAsFixed(0)}%",
-                style: const TextStyle(color: omanRed, fontSize: 10),
+              const SizedBox(height: 7),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _roundActionButton(
+                    icon: Icons.edit_rounded,
+                    color: omanGreen,
+                    onTap: () => editDrugDetailsQuantity(item),
+                  ),
+                  const SizedBox(width: 5),
+                  _roundActionButton(
+                    icon: Icons.delete_outline,
+                    color: omanRed,
+                    onTap: () => deleteDrugDetailsItem(item),
+                  ),
+                ],
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // DRUG DETAILS TOTAL
+  // ============================================================
+
+  double _calculateDrugDetailsTotal(List<Map<String, dynamic>> items) {
+    double total = 0;
+
+    for (final item in items) {
+      final qty = _toInt(item["qty"]);
+
+      final sale = _toDouble(item["sale"]);
+
+      total += qty * sale;
+    }
+
+    return total;
+  }
+
+  Widget _buildDrugDetailsTotalCard(double total) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: omanGreen.withOpacity(.10),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.calculate_rounded,
+              color: omanGreen,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 9),
+          const Expanded(
+            child: Text(
+              "Drug Details Total",
+              style: TextStyle(
+                color: omanGreen,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Text(
+            "${total.toStringAsFixed(3)} OMR",
+            style: const TextStyle(
+              color: omanGreen,
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // ROUND ACTION BUTTON
+  // ============================================================
+
+  Widget _roundActionButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 29,
+        height: 29,
+        decoration: BoxDecoration(
+          color: color.withOpacity(.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: color, size: 15),
       ),
     );
   }
@@ -1301,6 +1859,16 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // GENERATE ORDER
+  //
+  // EXCEL COLUMNS ONLY:
+  //
+  // Item
+  // Qty
+  // Purchase Price
+  // Sale Price
+  // Offers
+  // Total
+  //
   // ============================================================
 
   Future<void> generateOrder() async {
@@ -1308,7 +1876,11 @@ class _OrderScreenState extends State<OrderScreen> {
       return;
     }
 
-    if (inventoryRows.isEmpty && drugDetailsItems.isEmpty) {
+    final hasMissingItems = buildMergedMissingItems().isNotEmpty;
+
+    final hasDrugDetails = drugDetailsItems.isNotEmpty;
+
+    if (!hasMissingItems && !hasDrugDetails) {
       if (mounted) {
         setState(() {
           statusText =
@@ -1319,7 +1891,7 @@ class _OrderScreenState extends State<OrderScreen> {
       return;
     }
 
-    if (orderRows.isEmpty && drugDetailsItems.isEmpty) {
+    if (hasMissingItems && orderRows.isEmpty && !hasDrugDetails) {
       if (mounted) {
         setState(() {
           statusText = "Please select a Warehouse first.";
@@ -1348,6 +1920,12 @@ class _OrderScreenState extends State<OrderScreen> {
         return;
       }
 
+      final latestMerged = buildMergedMissingItems();
+
+      final latestHasMissing = latestMerged.isNotEmpty;
+
+      final latestHasDrugDetails = drugDetailsItems.isNotEmpty;
+
       setState(() {
         statusText = "Creating Excel workbook...";
       });
@@ -1358,307 +1936,176 @@ class _OrderScreenState extends State<OrderScreen> {
 
       final excel = Excel.createExcel();
 
-// Rename the default sheet instead of creating a new one.
-// This prevents an empty Sheet1 from remaining in the workbook.
+      // IMPORTANT:
+      // We create ONLY ONE sheet.
+      // No extra matching / stock / warehouse
+      // information will be exported.
       excel.rename("Sheet1", "Order");
 
-// Sheet 1
       final resultSheet = excel["Order"];
-      // Missing
-      final missingSheet = excel["Missing"];
-
-      // Selected
-      final selectedSheet = excel["Selected Items"];
-
-      // Drug Details
-      final drugDetailsSheet = excel["Drug Details Items"];
 
       // ----------------------------------------------------------
-      // RESULT SHEET
+      // EXACT EXCEL HEADERS
       // ----------------------------------------------------------
 
       _appendExcelRow(resultSheet, [
         "Item",
         "Qty",
-        "Matched Item",
         "Purchase Price",
+        "Sale Price",
+        "Offers",
         "Total",
       ]);
 
       double totalSale = 0;
 
-      final merged = buildMergedMissingItems();
+      // ==========================================================
+      // MISSING ITEMS
+      // ==========================================================
 
-      final similarItems = <Map<String, dynamic>>[];
+      if (latestHasMissing) {
+        int processed = 0;
 
-      final notFound = <Map<String, dynamic>>[];
+        for (final data in latestMerged.values) {
+          final item = data["item"]?.toString() ?? "";
 
-      int processed = 0;
+          final qty = _toInt(data["qty"]);
 
-      // ----------------------------------------------------------
-      // PROCESS MISSING ITEMS
-      // ----------------------------------------------------------
+          double bestScore = 0;
 
-      for (final data in merged.values) {
-        final item = data["item"]?.toString() ?? "";
+          Map<String, dynamic>? bestWarehouse;
 
-        final qty = _toInt(data["qty"]);
+          for (final warehouse in orderRows) {
+            final warehouseItem = warehouse["name"]?.toString().trim() ?? "";
 
-        double bestScore = 0;
+            if (warehouseItem.isEmpty) {
+              continue;
+            }
 
-        String bestItem = "";
+            final score = calculateMatchScore(item, warehouseItem);
 
-        List<String>? bestWarehouse;
-
-        for (final warehouse in orderRows) {
-          if (warehouse.isEmpty) {
-            continue;
+            if (score > bestScore) {
+              bestScore = score;
+              bestWarehouse = warehouse;
+            }
           }
 
-          final warehouseItem = warehouse[0].trim();
+          if (bestScore >= matchThreshold && bestWarehouse != null) {
+            final purchase = _toDouble(bestWarehouse["purchase"]);
 
-          if (warehouseItem.isEmpty) {
-            continue;
+            final sale = _toDouble(bestWarehouse["sale"]);
+
+            final offer = bestWarehouse["offer"]?.toString().trim() ?? "";
+
+            final total = sale * qty;
+
+            totalSale += total;
+
+            // ----------------------------------------------------
+            // ONLY THE SIX REQUESTED COLUMNS
+            // ----------------------------------------------------
+
+            _appendExcelRow(resultSheet, [
+              item,
+              qty.toString(),
+              purchase.toStringAsFixed(3),
+              sale.toStringAsFixed(3),
+              offer.isEmpty ? "" : offer,
+              total.toStringAsFixed(3),
+            ]);
           }
 
-          final score = calculateMatchScore(item, warehouseItem);
+          processed++;
 
-          if (score > bestScore) {
-            bestScore = score;
-            bestItem = warehouseItem;
-            bestWarehouse = warehouse;
+          if (mounted) {
+            setState(() {
+              statusText =
+                  "Processing Missing Items $processed / ${latestMerged.length}...";
+            });
           }
         }
+      }
 
-        if (bestScore >= 60 && bestWarehouse != null) {
-          double purchase = 0;
-          double sale = 0;
+      // ==========================================================
+      // DRUG DETAILS ITEMS
+      // ==========================================================
 
-          if (bestWarehouse.length >= 3) {
-            purchase = _toDouble(bestWarehouse[2]);
+      if (latestHasDrugDetails) {
+        final excelDrugDetailsItems = selectedWarehouseId == null
+            ? drugDetailsItems
+            : visibleDrugDetailsItems;
+
+        for (final item in excelDrugDetailsItems) {
+          final originalItem = item["item"]?.toString() ?? "";
+
+          final qty = _toInt(item["qty"]);
+
+          final purchase = _toDouble(item["purchase"]);
+
+          final sale = _toDouble(item["sale"]);
+
+          // ------------------------------------------------------
+          // OFFERS
+          //
+          // First try the saved offer field.
+          // If Drug Details saved it using another common
+          // field name, we also check those fields.
+          // ------------------------------------------------------
+
+          String offer = item["offer"]?.toString().trim() ?? "";
+
+          if (offer.isEmpty) {
+            offer = item["offers"]?.toString().trim() ?? "";
           }
 
-          if (bestWarehouse.length >= 4) {
-            sale = _toDouble(bestWarehouse[3]);
+          if (offer.isEmpty) {
+            offer = item["offerText"]?.toString().trim() ?? "";
+          }
+
+          if (offer.isEmpty) {
+            offer = item["promotion"]?.toString().trim() ?? "";
           }
 
           final total = sale * qty;
 
           totalSale += total;
 
+          // ------------------------------------------------------
+          // ONLY THE SIX REQUESTED COLUMNS
+          // ------------------------------------------------------
+
           _appendExcelRow(resultSheet, [
-            item,
+            originalItem,
             qty.toString(),
-            bestItem,
             purchase.toStringAsFixed(3),
+            sale.toStringAsFixed(3),
+            offer.isEmpty ? "" : offer,
             total.toStringAsFixed(3),
           ]);
-        } else {
-          final dataMap = {
-            "item": item,
-            "qty": qty,
-            "similar": bestItem,
-            "score": bestScore.toStringAsFixed(0),
-          };
-
-          if (bestScore >= 40) {
-            similarItems.add(dataMap);
-          } else {
-            notFound.add(dataMap);
-          }
-        }
-
-        processed++;
-
-        if (mounted) {
-          setState(() {
-            statusText =
-                "Processing Missing Items $processed / ${merged.length}...";
-          });
         }
       }
 
-      // ----------------------------------------------------------
-      // MISSING SHEET
-      // ----------------------------------------------------------
-
-      _appendExcelRow(missingSheet, ["Item", "Qty", "Similar Item", "Match %"]);
-
-      _appendExcelRow(missingSheet, ["POSSIBLE MATCHES"]);
-
-      for (final item in similarItems) {
-        _appendExcelRow(missingSheet, [
-          item["item"]?.toString() ?? "",
-          item["qty"]?.toString() ?? "0",
-          item["similar"]?.toString() ?? "",
-          "${item["score"]}%",
-        ]);
-      }
-
-      missingSheet.appendRow([]);
-
-      _appendExcelRow(missingSheet, ["NOT MATCHED ITEMS"]);
-
-      _appendExcelRow(missingSheet, ["Item", "Qty", "Similar Item", "Match %"]);
-
-      for (final item in notFound) {
-        _appendExcelRow(missingSheet, [
-          item["item"]?.toString() ?? "",
-          item["qty"]?.toString() ?? "0",
-          item["similar"]?.toString() ?? "",
-          "${item["score"]}%",
-        ]);
-      }
-
-      // ----------------------------------------------------------
-      // TOTAL RESULT SHEET
-      // ----------------------------------------------------------
+      // ==========================================================
+      // TOTAL
+      //
+      // Still using the same six columns.
+      // The total amount is placed in Total.
+      // ==========================================================
 
       resultSheet.appendRow([]);
 
       _appendExcelRow(resultSheet, [
         "",
         "",
-        "TOTAL",
         "",
+        "",
+        "TOTAL",
         totalSale.toStringAsFixed(3),
       ]);
 
-      // ----------------------------------------------------------
-      // SELECTED ITEMS
-      // ----------------------------------------------------------
-
-      _appendExcelRow(selectedSheet, [
-        "Item",
-        "Qty",
-        "Warehouse",
-        "Matched Item",
-        "Match %",
-        "Purchase Price",
-        "Sale Price",
-        "Total",
-      ]);
-
-      double selectedTotal = 0;
-
-      for (final item in selectedItems) {
-        final originalItem = item["item"]?.toString() ?? "";
-
-        final qty = _toInt(item["qty"]);
-
-        final warehouseName = item["warehouseName"]?.toString() ?? "";
-
-        final matchedItem = item["matchedItem"]?.toString() ?? "";
-
-        final score = _toDouble(item["score"]);
-
-        final purchase = _toDouble(item["purchase"]);
-
-        final sale = _toDouble(item["sale"]);
-
-        final total = sale * qty;
-
-        selectedTotal += total;
-
-        _appendExcelRow(selectedSheet, [
-          originalItem,
-          qty.toString(),
-          warehouseName,
-          matchedItem,
-          "${score.toStringAsFixed(0)}%",
-          purchase.toStringAsFixed(3),
-          sale.toStringAsFixed(3),
-          total.toStringAsFixed(3),
-        ]);
-      }
-
-      selectedSheet.appendRow([]);
-
-      _appendExcelRow(selectedSheet, [
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "TOTAL",
-        selectedTotal.toStringAsFixed(3),
-      ]);
-
-      // ----------------------------------------------------------
-      // DRUG DETAILS ITEMS
-      // ----------------------------------------------------------
-
-      _appendExcelRow(drugDetailsSheet, [
-        "Item",
-        "Qty",
-        "Warehouse",
-        "Matched Item",
-        "Match %",
-        "Purchase Price",
-        "Sale Price",
-        "Total",
-        "Registration",
-        "Manufacturer",
-      ]);
-
-      double drugDetailsTotal = 0;
-
-      for (final item in drugDetailsItems) {
-        final originalItem = item["item"]?.toString() ?? "";
-
-        final qty = _toInt(item["qty"]);
-
-        final warehouse = item["warehouse"]?.toString() ?? "";
-
-        final matchedItem = item["matchedItem"]?.toString() ?? "";
-
-        final matchPercent = _toDouble(item["matchPercent"]);
-
-        final purchase = _toDouble(item["purchase"]);
-
-        final sale = _toDouble(item["sale"]);
-
-        final registration = item["registration"]?.toString() ?? "";
-
-        final manufacturer = item["manufacturer"]?.toString() ?? "";
-
-        final total = sale * qty;
-
-        drugDetailsTotal += total;
-
-        _appendExcelRow(drugDetailsSheet, [
-          originalItem,
-          qty.toString(),
-          warehouse,
-          matchedItem,
-          "${matchPercent.toStringAsFixed(0)}%",
-          purchase.toStringAsFixed(3),
-          sale.toStringAsFixed(3),
-          total.toStringAsFixed(3),
-          registration,
-          manufacturer,
-        ]);
-      }
-
-      drugDetailsSheet.appendRow([]);
-
-      _appendExcelRow(drugDetailsSheet, [
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "TOTAL",
-        drugDetailsTotal.toStringAsFixed(3),
-        "",
-        "",
-      ]);
-
-      // ----------------------------------------------------------
+      // ==========================================================
       // ENCODE EXCEL
-      // ----------------------------------------------------------
+      // ==========================================================
 
       if (mounted) {
         setState(() {
@@ -1678,14 +2125,15 @@ class _OrderScreenState extends State<OrderScreen> {
         bytes = Uint8List.fromList(encoded);
       } catch (e, stack) {
         debugPrint("EXCEL ENCODE ERROR: $e");
+
         debugPrint(stack.toString());
 
         throw Exception("Could not encode Excel workbook: $e");
       }
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // STORE GENERATED FILE
-      // ----------------------------------------------------------
+      // ==========================================================
 
       if (!mounted) {
         return;
@@ -1709,9 +2157,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       setState(() {
         isGenerating = false;
-
         generatedFileBytes = null;
-
         statusText = "Error generating Excel:\n$e";
       });
 
@@ -1744,7 +2190,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // SAVE FILE - WINDOWS SAFE
+  // SAVE FILE
   // ============================================================
 
   Future<void> downloadFile(Uint8List bytes) async {
@@ -1765,17 +2211,10 @@ class _OrderScreenState extends State<OrderScreen> {
     });
 
     try {
-      // ----------------------------------------------------------
-      // WINDOWS FILE SAVE DIALOG
-      // ----------------------------------------------------------
-
       final location = await getSaveLocation(
         suggestedName: "Order.xlsx",
         acceptedTypeGroups: [
-          XTypeGroup(
-            label: "Excel",
-            extensions: const ["xlsx"],
-          ),
+          XTypeGroup(label: "Excel", extensions: const ["xlsx"]),
         ],
       );
 
@@ -1796,19 +2235,11 @@ class _OrderScreenState extends State<OrderScreen> {
         throw Exception("Invalid save location.");
       }
 
-      // ----------------------------------------------------------
-      // FORCE XLSX EXTENSION
-      // ----------------------------------------------------------
-
       if (!path.toLowerCase().endsWith(".xlsx")) {
         path = "$path.xlsx";
       }
 
       debugPrint("SAVING EXCEL TO: $path");
-
-      // ----------------------------------------------------------
-      // SAVE EXCEL FILE
-      // ----------------------------------------------------------
 
       final fileName = path.split(RegExp(r'[\\/]')).last;
 
@@ -1816,52 +2247,39 @@ class _OrderScreenState extends State<OrderScreen> {
         bytes,
         name: fileName,
         mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       );
 
       await xFile.saveTo(path);
 
-      // ----------------------------------------------------------
-      // VERIFY EXCEL FILE
-      // ----------------------------------------------------------
-
       final verifyFile = XFile(path);
+
       final savedBytes = await verifyFile.length();
 
       if (savedBytes <= 0) {
         throw Exception("Excel file was not saved correctly.");
       }
 
-      debugPrint(
-        "EXCEL SAVED SUCCESSFULLY: $path ($savedBytes bytes)",
-      );
+      debugPrint("EXCEL SAVED SUCCESSFULLY: $path ($savedBytes bytes)");
 
       // ----------------------------------------------------------
-      // IMPORTANT:
-      // From this point the Excel file is already successfully saved.
-      // History / SharedPreferences errors must NOT make Excel appear
-      // to have failed.
+      // SAVE HISTORY
       // ----------------------------------------------------------
 
       try {
-        await saveOrderLocally(
-          fileName: fileName,
-          filePath: path,
-        );
+        await saveOrderLocally(fileName: fileName, filePath: path);
 
         debugPrint("ORDER HISTORY SAVED SUCCESSFULLY");
       } catch (historyError, historyStack) {
         debugPrint("WARNING: COULD NOT SAVE ORDER HISTORY");
-        debugPrint("HISTORY ERROR: $historyError");
-        debugPrint(historyStack.toString());
 
-        // Do NOT throw here.
-        // Excel was already saved successfully.
+        debugPrint("HISTORY ERROR: $historyError");
+
+        debugPrint(historyStack.toString());
       }
 
       // ----------------------------------------------------------
       // CLEAR DRUG DETAILS
-      // This is also optional and must not invalidate the Excel save.
       // ----------------------------------------------------------
 
       try {
@@ -1872,15 +2290,11 @@ class _OrderScreenState extends State<OrderScreen> {
         debugPrint("DRUG DETAILS CLEARED");
       } catch (clearError, clearStack) {
         debugPrint("WARNING: COULD NOT CLEAR DRUG DETAILS");
+
         debugPrint("CLEAR ERROR: $clearError");
+
         debugPrint(clearStack.toString());
-
-        // Do NOT throw here.
       }
-
-      // ----------------------------------------------------------
-      // FINAL SUCCESS
-      // ----------------------------------------------------------
 
       if (!mounted) return;
 
@@ -1892,13 +2306,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
       _showMessage("Excel file saved successfully.");
 
-      // ----------------------------------------------------------
-      // RESET AFTER SUCCESSFUL EXCEL SAVE
-      // ----------------------------------------------------------
-
       resetScreen();
     } catch (e, stackTrace) {
       debugPrint("ERROR SAVING EXCEL: $e");
+
       debugPrint(stackTrace.toString());
 
       if (!mounted) return;
@@ -1936,7 +2347,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       selectedWarehouse = null;
 
-      drugDetailsItems.clear();
+
 
       statusText = "Ready";
     });
@@ -2100,29 +2511,53 @@ class _OrderScreenState extends State<OrderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPageHeader(),
+
                 const SizedBox(height: 18),
+
                 _buildSteps(),
+
                 const SizedBox(height: 22),
+
                 _sectionTitle(
                   icon: Icons.input_rounded,
                   title: "Order Input",
                   subtitle:
                       "Add missing items or select items from Drug Details.",
                 ),
+
                 const SizedBox(height: 11),
+
                 _buildInputCards(),
+
                 const SizedBox(height: 22),
+
+                if (selectedWarehouseId != null) ...[
+                  _sectionTitle(
+                    icon: Icons.medication_rounded,
+                    title: "Drug Details",
+                    subtitle:
+                        "Review, edit or delete Drug Details items for the selected warehouse.",
+                  ),
+                  const SizedBox(height: 11),
+                  buildDrugDetailsItemsCard(),
+                  const SizedBox(height: 22),
+                ],
+
                 _sectionTitle(
                   icon: Icons.warehouse_rounded,
                   title: "Warehouse",
                   subtitle: "Choose the warehouse you want to order from.",
                 ),
+
                 const SizedBox(height: 11),
+
                 _buildWarehouseCard(),
+
                 if (selectedWarehouse != null) ...[
                   const SizedBox(height: 9),
                   _buildWarehouseInfoCard(),
                 ],
+
                 if (inventoryRows.isNotEmpty && orderRows.isNotEmpty) ...[
                   const SizedBox(height: 22),
                   _sectionTitle(
@@ -2134,12 +2569,16 @@ class _OrderScreenState extends State<OrderScreen> {
                   const SizedBox(height: 11),
                   buildWarehouseSearchResults(),
                 ],
+
                 if (selectedItems.isNotEmpty) ...[
                   const SizedBox(height: 15),
                   _buildSelectedSummary(),
                 ],
+
                 const SizedBox(height: 22),
+
                 _buildGenerateArea(),
+
                 if (statusText.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _buildStatusCard(),
@@ -2462,7 +2901,9 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildDrugDetailsCompactCard() {
-    final count = drugDetailsItems.length;
+    final count = selectedWarehouseId == null
+        ? drugDetailsItems.length
+        : visibleDrugDetailsItems.length;
 
     return _card(
       child: Row(
@@ -2581,134 +3022,112 @@ class _OrderScreenState extends State<OrderScreen> {
                     SizedBox(height: 3),
                     Text(
                       "Choose where the order will be supplied from.",
-                      style: TextStyle(
-                        color: textMuted,
-                        fontSize: 10,
-                      ),
+                      style: TextStyle(color: textMuted, fontSize: 10),
                     ),
                   ],
                 ),
               ),
               if (orderRows.isNotEmpty)
-                _countBadge(
-                  "${orderRows.length}",
-                  omanGreen,
-                ),
+                _countBadge("${orderRows.length}", omanGreen),
             ],
           ),
-
           const SizedBox(height: 13),
-
           loadingWarehouses
               ? const Padding(
-            padding: EdgeInsets.all(12),
-            child: SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: omanGreen,
-              ),
-            ),
-          )
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: omanGreen,
+                    ),
+                  ),
+                )
               : DropdownButtonFormField<String>(
-            value: selectedWarehouseId,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: "Warehouse",
-              labelStyle: const TextStyle(
-                fontSize: 12,
-                color: textMuted,
-              ),
-              prefixIcon: const Icon(
-                Icons.warehouse_outlined,
-                color: omanGreen,
-                size: 19,
-              ),
-              filled: true,
-              fillColor: const Color(0xffF8FAFD),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 11,
-                vertical: 11,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: Colors.grey.shade200,
+                  value: selectedWarehouseId,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: "Warehouse",
+                    labelStyle: const TextStyle(fontSize: 12, color: textMuted),
+                    prefixIcon: const Icon(
+                      Icons.warehouse_outlined,
+                      color: omanGreen,
+                      size: 19,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xffF8FAFD),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 11,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                        color: omanGreen,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                  hint: const Text(
+                    "Choose Warehouse",
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  items: warehouses.map((warehouse) {
+                    return DropdownMenuItem<String>(
+                      value: warehouse["id"].toString(),
+                      child: Text(
+                        warehouse["name"].toString(),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) async {
+                    if (value == null) {
+                      return;
+                    }
+
+                    final warehouse = warehouses.firstWhere(
+                      (w) => w["id"].toString() == value,
+                      orElse: () => <String, dynamic>{},
+                    );
+
+                    setState(() {
+                      selectedWarehouseId = value;
+
+                      selectedWarehouse = warehouse;
+
+                      orderRows.clear();
+
+                      warehouseSearchResults.clear();
+
+                      selectedItems.clear();
+
+                      generatedFileBytes = null;
+
+                      statusText = "Loading warehouse inventory...";
+                    });
+
+                    await loadWarehouseItems(value);
+                  },
                 ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: Colors.grey.shade200,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(
-                  color: omanGreen,
-                  width: 1.4,
-                ),
-              ),
-            ),
-            hint: const Text(
-              "Choose Warehouse",
-              style: TextStyle(fontSize: 12),
-            ),
-            items: warehouses.map((warehouse) {
-              return DropdownMenuItem<String>(
-                value: warehouse["id"].toString(),
-                child: Text(
-                  warehouse["name"].toString(),
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
-                ),
-              );
-            }).toList(),
-            onChanged: (value) async {
-              if (value == null) {
-                return;
-              }
-
-              final warehouse = warehouses.firstWhere(
-                    (w) => w["id"].toString() == value,
-                orElse: () => <String, dynamic>{},
-              );
-
-              setState(() {
-                selectedWarehouseId = value;
-
-                selectedWarehouse = warehouse;
-
-                orderRows.clear();
-
-                warehouseSearchResults.clear();
-
-                selectedItems.clear();
-
-                generatedFileBytes = null;
-
-                statusText = "Loading warehouse inventory...";
-              });
-
-              await loadWarehouseItems(value);
-            },
-          ),
-
-          if (selectedWarehouseId != null &&
-              whatsappNumber.isNotEmpty) ...[
+          if (selectedWarehouseId != null && whatsappNumber.isNotEmpty) ...[
             const SizedBox(height: 10),
-
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(.06),
                 borderRadius: BorderRadius.circular(10),
-
               ),
               child: Row(
                 children: [
@@ -2725,13 +3144,10 @@ class _OrderScreenState extends State<OrderScreen> {
                       size: 18,
                     ),
                   ),
-
                   const SizedBox(width: 10),
-
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           warehouseName.isEmpty
@@ -2755,12 +3171,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       ],
                     ),
                   ),
-
-                  const Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 18,
-                  ),
+                  const Icon(Icons.check_circle, color: Colors.green, size: 18),
                 ],
               ),
             ),
@@ -2893,6 +3304,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Widget _smallBadge(IconData icon, String text) {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 180),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2903,7 +3315,13 @@ class _OrderScreenState extends State<OrderScreen> {
         children: [
           Icon(icon, size: 11, color: Colors.grey.shade600),
           const SizedBox(width: 4),
-          Text(text, style: const TextStyle(fontSize: 9, color: textMuted)),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: textMuted),
+            ),
+          ),
         ],
       ),
     );
@@ -2970,10 +3388,14 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildGenerateArea() {
+    final hasMissing = buildMergedMissingItems().isNotEmpty;
+
+    final hasDrugDetails = drugDetailsItems.isNotEmpty;
+
     final canGenerate =
-        (inventoryRows.isNotEmpty || drugDetailsItems.isNotEmpty) &&
+        (hasMissing || hasDrugDetails) &&
         !isGenerating &&
-        (orderRows.isNotEmpty || drugDetailsItems.isNotEmpty);
+        ((!hasMissing || orderRows.isNotEmpty) || hasDrugDetails);
 
     return _card(
       child: Column(

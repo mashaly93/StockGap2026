@@ -107,18 +107,14 @@ if (query.isEmpty) return;
 try {
 final prefs = await SharedPreferences.getInstance();
 
-List<String> history =
-prefs.getStringList(historyKey) ?? <String>[];
+List<String> history = prefs.getStringList(historyKey) ?? <String>[];
 
-// Remove duplicate
 history.removeWhere(
 (item) => item.trim().toLowerCase() == query.toLowerCase(),
 );
 
-// Put newest search first
 history.insert(0, query);
 
-// Keep last 10
 if (history.length > maxHistory) {
 history = history.sublist(0, maxHistory);
 }
@@ -336,9 +332,7 @@ if (!mounted) return;
 
 Navigator.push(
 context,
-MaterialPageRoute(
-builder: (_) => DrugDetailsScreen(drug: drug),
-),
+MaterialPageRoute(builder: (_) => DrugDetailsScreen(drug: drug)),
 );
 }
 
@@ -386,10 +380,7 @@ const SizedBox(width: 7),
 
 const Text(
 "Drug Eye",
-style: TextStyle(
-fontWeight: FontWeight.bold,
-fontSize: 19,
-),
+style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
 ),
 
 const SizedBox(width: 7),
@@ -424,12 +415,7 @@ Container(
 width: double.infinity,
 color: Colors.white,
 
-padding: const EdgeInsets.fromLTRB(
-16,
-12,
-16,
-16,
-),
+padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
 
 child: TextField(
 controller: controller,
@@ -448,20 +434,13 @@ textInputAction: TextInputAction.search,
 decoration: InputDecoration(
 hintText: "Search drug, active ingredient...",
 
-hintStyle: TextStyle(
-color: Colors.grey.shade500,
-),
+hintStyle: TextStyle(color: Colors.grey.shade500),
 
-prefixIcon: const Icon(
-Icons.search,
-color: omanRed,
-),
+prefixIcon: const Icon(Icons.search, color: omanRed),
 
 suffixIcon: controller.text.isNotEmpty
 ? IconButton(
-icon: const Icon(
-Icons.clear,
-),
+icon: const Icon(Icons.clear),
 onPressed: clearSearch,
 )
     : null,
@@ -484,10 +463,7 @@ borderSide: BorderSide.none,
 focusedBorder: OutlineInputBorder(
 borderRadius: BorderRadius.circular(14),
 
-borderSide: const BorderSide(
-color: omanRed,
-width: 1.2,
-),
+borderSide: const BorderSide(color: omanRed, width: 1.2),
 ),
 ),
 ),
@@ -496,7 +472,6 @@ width: 1.2,
 // ==========================================================
 // LOADING
 // ==========================================================
-
 if (loading)
 const LinearProgressIndicator(
 minHeight: 2,
@@ -507,7 +482,6 @@ backgroundColor: Color(0xffE8EFEA),
 // ==========================================================
 // CONTENT
 // ==========================================================
-
 Expanded(
 child: controller.text.trim().isEmpty
 ? buildHistory()
@@ -524,11 +498,7 @@ child: controller.text.trim().isEmpty
 
 Widget buildHistory() {
 if (historyLoading) {
-return const Center(
-child: CircularProgressIndicator(
-color: omanRed,
-),
-);
+return const Center(child: CircularProgressIndicator(color: omanRed));
 }
 
 if (searchHistory.isEmpty) {
@@ -560,10 +530,7 @@ const SizedBox(height: 18),
 
 const Text(
 "No Search History",
-style: TextStyle(
-fontSize: 18,
-fontWeight: FontWeight.bold,
-),
+style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
 ),
 
 const SizedBox(height: 8),
@@ -587,12 +554,7 @@ height: 1.5,
 }
 
 return ListView(
-padding: const EdgeInsets.fromLTRB(
-16,
-18,
-16,
-20,
-),
+padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
 
 children: [
 // ==========================================================
@@ -613,21 +575,14 @@ borderRadius: BorderRadius.circular(5),
 
 const SizedBox(width: 8),
 
-const Icon(
-Icons.history_rounded,
-color: omanGreen,
-size: 23,
-),
+const Icon(Icons.history_rounded, color: omanGreen, size: 23),
 
 const SizedBox(width: 8),
 
 const Expanded(
 child: Text(
 "Recent Searches",
-style: TextStyle(
-fontSize: 18,
-fontWeight: FontWeight.bold,
-),
+style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
 ),
 ),
 
@@ -637,10 +592,7 @@ onPressed: clearAllHistory,
 child: const Text(
 "Clear All",
 
-style: TextStyle(
-color: omanRed,
-fontWeight: FontWeight.w600,
-),
+style: TextStyle(color: omanRed, fontWeight: FontWeight.w600),
 ),
 ),
 ],
@@ -651,9 +603,8 @@ const SizedBox(height: 8),
 // ==========================================================
 // HISTORY ITEMS
 // ==========================================================
-
-...searchHistory.map((item) {
-return Container(
+for (int index = 0; index < searchHistory.length; index++)
+Container(
 margin: const EdgeInsets.only(bottom: 8),
 
 decoration: BoxDecoration(
@@ -661,9 +612,7 @@ color: Colors.white,
 
 borderRadius: BorderRadius.circular(14),
 
-border: Border.all(
-color: Colors.grey.shade200,
-),
+border: Border.all(color: Colors.grey.shade200),
 
 boxShadow: [
 BoxShadow(
@@ -700,7 +649,7 @@ size: 21,
 ),
 
 title: Text(
-item,
+searchHistory[index],
 
 maxLines: 1,
 
@@ -720,16 +669,15 @@ color: Colors.grey.shade500,
 ),
 
 onPressed: () {
-deleteHistoryItem(item);
+deleteHistoryItem(searchHistory[index]);
 },
 ),
 
 onTap: () {
-selectHistory(item);
+selectHistory(searchHistory[index]);
 },
 ),
-);
-}),
+),
 ],
 );
 }
@@ -740,11 +688,7 @@ selectHistory(item);
 
 Widget buildResults() {
 if (loading) {
-return const Center(
-child: CircularProgressIndicator(
-color: omanRed,
-),
-);
+return const Center(child: CircularProgressIndicator(color: omanRed));
 }
 
 if (results.isEmpty) {
@@ -786,10 +730,7 @@ const SizedBox(height: 5),
 Text(
 "Try another drug name or ingredient",
 
-style: TextStyle(
-fontSize: 13,
-color: Colors.grey.shade500,
-),
+style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
 ),
 ],
 ),
@@ -797,10 +738,7 @@ color: Colors.grey.shade500,
 }
 
 return ListView.builder(
-padding: const EdgeInsets.only(
-top: 8,
-bottom: 20,
-),
+padding: const EdgeInsets.only(top: 8, bottom: 20),
 
 itemCount: results.length,
 
@@ -810,17 +748,12 @@ final drug = results[index];
 return Card(
 elevation: 0,
 
-margin: const EdgeInsets.symmetric(
-horizontal: 12,
-vertical: 5,
-),
+margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
 
 shape: RoundedRectangleBorder(
 borderRadius: BorderRadius.circular(14),
 
-side: BorderSide(
-color: Colors.grey.shade200,
-),
+side: BorderSide(color: Colors.grey.shade200),
 ),
 
 child: ListTile(
@@ -839,10 +772,7 @@ color: omanRed.withOpacity(0.08),
 borderRadius: BorderRadius.circular(12),
 ),
 
-child: const Icon(
-Icons.medication_outlined,
-color: omanRed,
-),
+child: const Icon(Icons.medication_outlined, color: omanRed),
 ),
 
 title: Text(
@@ -852,10 +782,7 @@ maxLines: 2,
 
 overflow: TextOverflow.ellipsis,
 
-style: const TextStyle(
-fontWeight: FontWeight.bold,
-fontSize: 15,
-),
+style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
 ),
 
 subtitle: Padding(
@@ -865,22 +792,23 @@ child: Column(
 crossAxisAlignment: CrossAxisAlignment.start,
 
 children: [
-if (drug.active1.isNotEmpty)
-Text(
-drug.active1,
+
+
+if (drug.manufacturer.isNotEmpty)
+Padding(
+padding: const EdgeInsets.only(top: 3),
+child: Text(
+"Agent: ${drug.manufacturer}",
 
 maxLines: 1,
 
 overflow: TextOverflow.ellipsis,
+
+style: TextStyle(
+color: Colors.grey.shade700,
+fontSize: 12,
 ),
-
-if (drug.active2.isNotEmpty)
-Text(
-drug.active2,
-
-maxLines: 1,
-
-overflow: TextOverflow.ellipsis,
+),
 ),
 
 const SizedBox(height: 4),
@@ -898,11 +826,7 @@ fontSize: 12,
 
 const SizedBox(width: 12),
 
-const Icon(
-Icons.circle,
-size: 6,
-color: omanGreen,
-),
+const Icon(Icons.circle, size: 6, color: omanGreen),
 
 const SizedBox(width: 5),
 

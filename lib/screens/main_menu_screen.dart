@@ -6,6 +6,7 @@ import 'Homescreen.dart';
 import 'OrderScreen.dart';
 import 'drug_search_screen.dart';
 import 'import_drug_screen.dart';
+import 'warehouse_items_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   final String storeCode;
@@ -166,12 +167,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       ),
       child: Column(
         children: [
-          // ==========================================================
-          // OMAN FLAG STRIPE
-          // ==========================================================
-
-
-
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -374,7 +369,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ========================================================
-            // SMALL OMAN LINE
+            // OMAN LINE
             // ========================================================
 
             Row(
@@ -498,6 +493,29 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       );
 
       // ------------------------------------------------------------
+      // WAREHOUSE ITEMS
+      // ------------------------------------------------------------
+
+      cards.add(
+        MenuCard(
+          title: "Warehouse Items",
+          description: "Search warehouse items and prices",
+          icon: Icons.warehouse_outlined,
+          color: omanRed,
+          index: 2,
+          animation: _animationController,
+          onTap: () {
+            Navigator.push(
+              context,
+              _buildPageRoute(
+                WarehouseItemsScreen(pharmacyCode: widget.storeCode),
+              ),
+            );
+          },
+        ),
+      );
+
+      // ------------------------------------------------------------
       // MINISTRY OF HEALTH LIST
       // ------------------------------------------------------------
 
@@ -507,7 +525,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       //     description: "Upload Ministry of Health drug list",
       //     icon: Icons.upload_file_rounded,
       //     color: const Color(0xff7b61ff),
-      //     index: 2,
+      //     index: 3,
       //     animation: _animationController,
       //     onTap: () {
       //       Navigator.push(
@@ -687,6 +705,9 @@ class _MenuCardState extends State<MenuCard> {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
 
+              // ====================================================
+              // SAME SIZE
+              // ====================================================
               width: 300,
               height: 150,
 
@@ -750,7 +771,6 @@ class _MenuCardState extends State<MenuCard> {
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-
                           ),
                         ),
 
