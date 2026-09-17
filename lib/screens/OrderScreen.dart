@@ -48,13 +48,22 @@ class _OrderScreenState extends State<OrderScreen> {
   late final String storeCode = widget.storeCode;
 
   // ============================================================
-  // PHARMACY MISSING ITEMS
+  // MISSING ITEMS EXCEL
+  //
+  // SOURCE #1
+  //
+  // Used ONLY for:
+  // Order + Missing Items
   // ============================================================
 
   List<List<String>> inventoryRows = [];
 
   // ============================================================
   // WAREHOUSE INVENTORY
+  //
+  // SOURCE FOR MATCHING / PRICES / STOCK ONLY
+  //
+  // NEVER USED AS AN ORDER SOURCE BY ITSELF.
   // ============================================================
 
   List<Map<String, dynamic>> orderRows = [];
@@ -94,12 +103,22 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // SELECTED ITEMS
+  //
+  // UI ONLY
+  //
+  // NEVER USED BY GENERATE ORDER
   // ============================================================
 
   final List<Map<String, dynamic>> selectedItems = [];
 
   // ============================================================
   // DRUG DETAILS
+  //
+  // SOURCE #2
+  //
+  // INDEPENDENT FROM MISSING ITEMS.
+  //
+  // NEVER CLEARED WHEN EXCEL IS SAVED.
   // ============================================================
 
   List<Map<String, dynamic>> drugDetailsItems = [];
@@ -275,13 +294,14 @@ class _OrderScreenState extends State<OrderScreen> {
       debugPrint("DRUG DETAILS ITEMS SAVED = ${encoded.length}");
     } catch (e) {
       debugPrint("ERROR SAVING DRUG DETAILS ITEMS: $e");
-
       rethrow;
     }
   }
 
   // ============================================================
   // CLEAR DRUG DETAILS
+  //
+  // ONLY CALLED BY USER
   // ============================================================
 
   Future<void> clearDrugDetailsItems() async {
@@ -296,7 +316,7 @@ class _OrderScreenState extends State<OrderScreen> {
         });
       }
     } catch (_) {
-      // لا نوقف نجاح حفظ الملف لو فشل حذف Drug Details Items
+      // Do not stop the page if clearing fails.
     }
   }
 
@@ -328,6 +348,8 @@ class _OrderScreenState extends State<OrderScreen> {
         .where((value) => value.isNotEmpty)
         .toList();
 
+    // If the saved Drug Details item has no warehouse information,
+    // allow it for the currently selected warehouse.
     if (values.isEmpty) {
       return true;
     }
@@ -743,13 +765,33 @@ class _OrderScreenState extends State<OrderScreen> {
           continue;
         }
 
-        final price = _toDouble(data["price"]);
+        final purchase = _toDouble(
+          data["purchasePrice"] ??
+              data["purchase_price"] ??
+              data["costPrice"] ??
+              data["cost_price"] ??
+              data["buyPrice"] ??
+              data["buy_price"] ??
+              data["purchase"] ??
+              data["price"],
+        );
+
+        final sale = _toDouble(
+          data["salePrice"] ??
+              data["sale_price"] ??
+              data["sellingPrice"] ??
+              data["selling_price"] ??
+              data["sellPrice"] ??
+              data["sell_price"] ??
+              data["sale"] ??
+              data["price"],
+        );
 
         loadedRows.add({
           "id": doc.id,
           "name": name,
-          "purchase": price,
-          "sale": price,
+          "purchase": purchase,
+          "sale": sale,
           "stock": _getStock(data),
           "offer": _getOfferText(data),
         });
@@ -798,7 +840,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // PICK INVENTORY
+  // PICK MISSING ITEMS EXCEL
   // ============================================================
 
   Future<void> pickInventory() async {
@@ -873,69 +915,98 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
+  // FIND ITEM COLUMN
+  // ============================================================
+
+  int findItemColumn(List<String> header) {
+    for (int i = 0; i < header.length; i++) {
+      final value = header[i]
+          .trim()
+          .toLowerCase()
+          .replaceAll("_", " ")
+          .replaceAll("-", " ");
+
+      if (value == "item" ||
+          value == "items" ||
+          value == "name" ||
+          value == "product" ||
+          value == "product name" ||
+          value == "drug" ||
+          value == "drug name" ||
+          value == "medicine" ||
+          value == "medicine name" ||
+          value == "description" ||
+          value == "item name") {
+        return i;
+      }
+    }
+
+    return 0;
+  }
+
+  // ============================================================
   // MERGE MISSING ITEMS
+  //
+  // SOURCE #1 ONLY
+  //
+  // inventoryRows = uploaded Excel
+  //
+  // NEVER:
+  // Drug Details
+  // Selected Items
+  // Warehouse
   // ============================================================
 
   Map<String, Map<String, dynamic>> buildMergedMissingItems() {
     final Map<String, Map<String, dynamic>> merged = {};
 
-    if (inventoryRows.isEmpty) {
+    if (inventoryRows.length <= 1) {
       return merged;
     }
 
     final header = inventoryRows.first;
+
+    final itemColumnIndex = findItemColumn(header);
 
     final qtyColumnIndex = findQtyColumn(header);
 
     for (int i = 1; i < inventoryRows.length; i++) {
       final row = inventoryRows[i];
 
-      if (row.isEmpty) {
+      if (row.isEmpty || itemColumnIndex >= row.length) {
         continue;
       }
 
-      String item = "";
-
-      int qty = 0;
-
-      if (qtyColumnIndex >= 0 && qtyColumnIndex < row.length) {
-        final qtyText = row[qtyColumnIndex].replaceAll(",", "").trim();
-
-        qty = int.tryParse(qtyText) ?? 0;
-
-        final itemParts = <String>[];
-
-        for (int x = 0; x < row.length; x++) {
-          if (x == qtyColumnIndex) {
-            continue;
-          }
-
-          final value = row[x].trim();
-
-          if (value.isEmpty) {
-            continue;
-          }
-
-          itemParts.add(value);
-        }
-
-        item = itemParts.join(" ").trim();
-      } else if (row.length >= 2) {
-        item = row[0].trim();
-
-        final qtyText = row[1].replaceAll(",", "").trim();
-
-        qty = int.tryParse(qtyText) ?? 0;
-      }
+      final item = row[itemColumnIndex].trim();
 
       if (item.isEmpty) {
         continue;
       }
 
+      int qty = 1;
+
+      if (qtyColumnIndex >= 0 && qtyColumnIndex < row.length) {
+        final qtyText = row[qtyColumnIndex].replaceAll(",", "").trim();
+
+        qty = int.tryParse(qtyText) ?? 1;
+      } else if (row.length > 1) {
+        final qtyText = row[1].replaceAll(",", "").trim();
+
+        qty = int.tryParse(qtyText) ?? 1;
+      }
+
+      if (qty <= 0) {
+        qty = 1;
+      }
+
       final key = normalizeForSearch(item);
 
+      if (key.isEmpty) {
+        continue;
+      }
+
       if (merged.containsKey(key)) {
-        merged[key]!["qty"] = (merged[key]!["qty"] as int) + qty;
+        merged[key]!["qty"] = _toInt(merged[key]!["qty"]) + qty;
       } else {
         merged[key] = {"item": item, "qty": qty};
       }
@@ -1113,6 +1184,12 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // SEARCH ALL MISSING ITEMS
+  //
+  // UI ONLY
+  //
+  // This creates Warehouse Matches.
+  //
+  // It does NOT define what Generate uses.
   // ============================================================
 
   void searchAllMissingItems() {
@@ -1131,9 +1208,9 @@ class _OrderScreenState extends State<OrderScreen> {
     final results = <Map<String, dynamic>>[];
 
     for (final data in merged.values) {
-      final item = data["item"].toString();
+      final item = data["item"]?.toString() ?? "";
 
-      final qty = data["qty"] as int;
+      final qty = _toInt(data["qty"]);
 
       double bestScore = 0;
 
@@ -1150,7 +1227,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
         if (score > bestScore) {
           bestScore = score;
-
           bestWarehouse = warehouse;
         }
       }
@@ -1205,6 +1281,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // ADD SELECTED
+  //
+  // UI ONLY
   // ============================================================
 
   void addSelectedItem(Map<String, dynamic> result) {
@@ -1242,6 +1320,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // REMOVE SELECTED
+  //
+  // UI ONLY
   // ============================================================
 
   void removeSelectedItem(Map<String, dynamic> result) {
@@ -1590,8 +1670,6 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final score = _toDouble(item["matchPercent"]);
 
-    final purchase = _toDouble(item["purchase"]);
-
     final sale = _toDouble(item["sale"]);
 
     final total = sale * qty;
@@ -1850,7 +1928,7 @@ class _OrderScreenState extends State<OrderScreen> {
   }
 
   // ============================================================
-  // ADD EXCEL ROW SAFELY
+  // ADD EXCEL ROW
   // ============================================================
 
   void _appendExcelRow(Sheet sheet, List<String> values) {
@@ -1860,14 +1938,33 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
   // GENERATE ORDER
   //
-  // EXCEL COLUMNS ONLY:
+  // ============================================================
   //
-  // Item
-  // Qty
-  // Purchase Price
-  // Sale Price
-  // Offers
-  // Total
+  // SOURCE #1 = Missing Items Excel
+  //
+  // SOURCE #2 = Drug Details
+  //
+  // SOURCE #3 = Selected Items
+  //             NEVER USED
+  //
+  // Warehouse inventory:
+  //             MATCHING / PRICE / STOCK ONLY
+  //
+  // ============================================================
+  //
+  // OUTPUT:
+  //
+  // Missing only:
+  //   Order
+  //   Missing Items
+  //
+  // Drug Details only:
+  //   Drug Details Order
+  //
+  // Both:
+  //   Order
+  //   Missing Items
+  //   Drug Details Order
   //
   // ============================================================
 
@@ -1876,25 +1973,75 @@ class _OrderScreenState extends State<OrderScreen> {
       return;
     }
 
-    final hasMissingItems = buildMergedMissingItems().isNotEmpty;
+    // ==========================================================
+    // SOURCE 1
+    // MISSING ITEMS
+    // ==========================================================
 
-    final hasDrugDetails = drugDetailsItems.isNotEmpty;
+    final mergedMissingItems = buildMergedMissingItems();
 
-    if (!hasMissingItems && !hasDrugDetails) {
+    // ==========================================================
+    // SOURCE 2
+    // DRUG DETAILS
+    //
+    // This is already filtered by selected warehouse.
+    // ==========================================================
+
+    final drugDetailsForWarehouse = visibleDrugDetailsItems;
+
+    final hasMissing = mergedMissingItems.isNotEmpty;
+
+    final hasDrugDetails = drugDetailsForWarehouse.isNotEmpty;
+
+    // ==========================================================
+    // NOTHING TO GENERATE
+    // ==========================================================
+
+    if (!hasMissing && !hasDrugDetails) {
       if (mounted) {
         setState(() {
           statusText =
-              "Please upload Missing Items or add items from Drug Details.";
+          "Please upload Missing Items Excel or add Drug Details items.";
         });
       }
 
       return;
     }
 
-    if (hasMissingItems && orderRows.isEmpty && !hasDrugDetails) {
+    // ==========================================================
+    // WAREHOUSE
+    //
+    // A warehouse is still required because:
+    //
+    // - Missing Items must be matched against it.
+    // - Drug Details are filtered by warehouse.
+    //
+    // BUT orderRows itself is NOT required when generating
+    // Drug Details only.
+    // ==========================================================
+
+    if (selectedWarehouseId == null) {
       if (mounted) {
         setState(() {
           statusText = "Please select a Warehouse first.";
+        });
+      }
+
+      return;
+    }
+
+    // ==========================================================
+    // MISSING ITEMS NEED WAREHOUSE INVENTORY
+    //
+    // Drug Details do NOT need orderRows because they already
+    // contain their matched item / prices.
+    // ==========================================================
+
+    if (hasMissing && orderRows.isEmpty) {
+      if (mounted) {
+        setState(() {
+          statusText =
+          "Warehouse inventory is empty. Please select a warehouse with inventory.";
         });
       }
 
@@ -1905,78 +2052,125 @@ class _OrderScreenState extends State<OrderScreen> {
 
     setState(() {
       isGenerating = true;
-      statusText = "Preparing Excel file...";
+      statusText = "Preparing Order...";
       generatedFileBytes = null;
     });
 
     try {
-      // ----------------------------------------------------------
-      // LOAD LATEST DRUG DETAILS
-      // ----------------------------------------------------------
-
-      await loadDrugDetailsItems();
-
-      if (!mounted) {
-        return;
-      }
-
-      final latestMerged = buildMergedMissingItems();
-
-      final latestHasMissing = latestMerged.isNotEmpty;
-
-      final latestHasDrugDetails = drugDetailsItems.isNotEmpty;
-
-      setState(() {
-        statusText = "Creating Excel workbook...";
-      });
-
-      // ----------------------------------------------------------
-      // CREATE EXCEL
-      // ----------------------------------------------------------
+      // ========================================================
+      // CREATE WORKBOOK
+      // ========================================================
 
       final excel = Excel.createExcel();
 
+      // ========================================================
+      // CREATE ONLY THE SHEETS WE NEED
+      //
       // IMPORTANT:
-      // We create ONLY ONE sheet.
-      // No extra matching / stock / warehouse
-      // information will be exported.
-      excel.rename("Sheet1", "Order");
+      //
+      // We reuse Sheet1 instead of creating the target sheet
+      // first, to avoid duplicate/default-sheet conflicts.
+      // ========================================================
 
-      final resultSheet = excel["Order"];
+      Sheet? orderSheet;
+      Sheet? missingSheet;
+      Sheet? drugDetailsSheet;
 
-      // ----------------------------------------------------------
-      // EXACT EXCEL HEADERS
-      // ----------------------------------------------------------
+      if (hasMissing) {
+        // Default Sheet1 -> Order
+        excel.rename("Sheet1", "Order");
 
-      _appendExcelRow(resultSheet, [
-        "Item",
-        "Qty",
-        "Purchase Price",
-        "Sale Price",
-        "Offers",
-        "Total",
-      ]);
+        orderSheet = excel["Order"];
+
+        missingSheet = excel["Missing Items"];
+
+        // Drug Details is created only if needed.
+        if (hasDrugDetails) {
+          drugDetailsSheet = excel["Drug Details Order"];
+        }
+      } else {
+        // Drug Details only.
+        //
+        // Reuse Sheet1 so there is no unwanted Sheet1.
+        excel.rename("Sheet1", "Drug Details Order");
+
+        drugDetailsSheet = excel["Drug Details Order"];
+      }
+
+      // ========================================================
+      // MISSING / ORDER
+      // ========================================================
 
       double totalSale = 0;
 
-      // ==========================================================
-      // MISSING ITEMS
-      // ==========================================================
+      int matchedCount = 0;
 
-      if (latestHasMissing) {
-        int processed = 0;
+      int missingCount = 0;
 
-        for (final data in latestMerged.values) {
-          final item = data["item"]?.toString() ?? "";
+      int processedMissing = 0;
+
+      final List<Map<String, dynamic>> notMatchedItems = [];
+
+      if (hasMissing && orderSheet != null && missingSheet != null) {
+        // ------------------------------------------------------
+        // ORDER HEADERS
+        //
+        // IMPORTANT:
+        // Matched Item + Match % are INCLUDED.
+        // ------------------------------------------------------
+
+        _appendExcelRow(orderSheet, [
+          "Item",
+          "Qty",
+          "Matched Item",
+          "Match %",
+          "Purchase Price",
+          "Sale Price",
+          "Offers",
+          "Total",
+        ]);
+
+        // ------------------------------------------------------
+        // MISSING HEADERS
+        // ------------------------------------------------------
+
+        _appendExcelRow(missingSheet, [
+          "Item",
+          "Qty",
+          "Similar Item",
+          "Match %",
+          "Purchase Price",
+          "Sale Price",
+          "Offers",
+          "Total",
+        ]);
+
+        // ------------------------------------------------------
+        // PROCESS MISSING ITEMS
+        //
+        // SOURCE = Excel only.
+        // ------------------------------------------------------
+
+        for (final data in mergedMissingItems.values) {
+          final item = data["item"]?.toString().trim() ?? "";
 
           final qty = _toInt(data["qty"]);
+
+          if (item.isEmpty || qty <= 0) {
+            continue;
+          }
+
+          // ----------------------------------------------------
+          // FIND BEST WAREHOUSE MATCH
+          // ----------------------------------------------------
 
           double bestScore = 0;
 
           Map<String, dynamic>? bestWarehouse;
 
           for (final warehouse in orderRows) {
-            final warehouseItem = warehouse["name"]?.toString().trim() ?? "";
+            final warehouseItem =
+                warehouse["name"]?.toString().trim() ?? "";
 
             if (warehouseItem.isEmpty) {
               continue;
@@ -1990,164 +2184,346 @@ class _OrderScreenState extends State<OrderScreen> {
             }
           }
 
-          if (bestScore >= matchThreshold && bestWarehouse != null) {
-            final purchase = _toDouble(bestWarehouse["purchase"]);
+          // ====================================================
+          // MATCH >= 60%
+          // ====================================================
 
-            final sale = _toDouble(bestWarehouse["sale"]);
+          if (bestWarehouse != null && bestScore >= matchThreshold) {
+            final matchedItem =
+                bestWarehouse["name"]?.toString().trim() ?? "";
 
-            final offer = bestWarehouse["offer"]?.toString().trim() ?? "";
+            final purchase =
+            _toDouble(bestWarehouse["purchase"]);
+
+            final sale =
+            _toDouble(bestWarehouse["sale"]);
+
+            final offer =
+                bestWarehouse["offer"]?.toString().trim() ?? "";
 
             final total = sale * qty;
 
             totalSale += total;
 
-            // ----------------------------------------------------
-            // ONLY THE SIX REQUESTED COLUMNS
-            // ----------------------------------------------------
+            matchedCount++;
 
-            _appendExcelRow(resultSheet, [
+            _appendExcelRow(orderSheet, [
               item,
               qty.toString(),
+              matchedItem,
+              "${bestScore.toStringAsFixed(0)}%",
               purchase.toStringAsFixed(3),
               sale.toStringAsFixed(3),
-              offer.isEmpty ? "" : offer,
+              offer,
               total.toStringAsFixed(3),
             ]);
           }
 
-          processed++;
+          // ====================================================
+          // NO MATCH >= 60%
+          //
+          // Keep the best similar warehouse item anyway.
+          // ====================================================
+
+          else {
+            missingCount++;
+
+            notMatchedItems.add({
+              "item": item,
+              "qty": qty,
+              "similarItem":
+              bestWarehouse?["name"]?.toString().trim() ??
+                  "NOT MATCHED",
+              "score": bestScore,
+              "purchase":
+              bestWarehouse?["purchase"] ?? 0,
+              "sale":
+              bestWarehouse?["sale"] ?? 0,
+              "offer":
+              bestWarehouse?["offer"]?.toString().trim() ?? "",
+            });
+          }
+
+          processedMissing++;
 
           if (mounted) {
             setState(() {
               statusText =
-                  "Processing Missing Items $processed / ${latestMerged.length}...";
+              "Processing Missing Items "
+                  "$processedMissing / "
+                  "${mergedMissingItems.length}...";
             });
           }
         }
+
+        // ------------------------------------------------------
+        // SORT NOT MATCHED BY MATCH %
+        //
+        // Highest score first.
+        // ------------------------------------------------------
+
+        notMatchedItems.sort((a, b) {
+          final scoreA = _toDouble(a["score"]);
+
+          final scoreB = _toDouble(b["score"]);
+
+          return scoreB.compareTo(scoreA);
+        });
+
+        // ------------------------------------------------------
+        // NOT MATCHED ITEMS
+        // ------------------------------------------------------
+
+        if (notMatchedItems.isNotEmpty) {
+          _appendExcelRow(missingSheet, [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+          ]);
+
+          _appendExcelRow(missingSheet, [
+            "NOT MATCHED ITEMS",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+          ]);
+
+          _appendExcelRow(missingSheet, [
+            "Item",
+            "Qty",
+            "Similar Item",
+            "Match %",
+            "Purchase Price",
+            "Sale Price",
+            "Offers",
+            "Total",
+          ]);
+
+          for (final data in notMatchedItems) {
+            final item =
+                data["item"]?.toString() ?? "";
+
+            final qty =
+            _toInt(data["qty"]);
+
+            final similarItem =
+                data["similarItem"]?.toString() ??
+                    "NOT MATCHED";
+
+            final score =
+            _toDouble(data["score"]);
+
+            final purchase =
+            _toDouble(data["purchase"]);
+
+            final sale =
+            _toDouble(data["sale"]);
+
+            final offer =
+                data["offer"]?.toString() ?? "";
+
+            final total = sale * qty;
+
+            _appendExcelRow(missingSheet, [
+              item,
+              qty.toString(),
+              similarItem,
+              "${score.toStringAsFixed(0)}%",
+              purchase.toStringAsFixed(3),
+              sale.toStringAsFixed(3),
+              offer,
+              total.toStringAsFixed(3),
+            ]);
+          }
+        }
+
+        // ------------------------------------------------------
+        // ORDER TOTAL
+        // ------------------------------------------------------
+
+        _appendExcelRow(orderSheet, [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "TOTAL",
+          totalSale.toStringAsFixed(3),
+        ]);
       }
 
-      // ==========================================================
-      // DRUG DETAILS ITEMS
-      // ==========================================================
+      // ========================================================
+      // DRUG DETAILS ORDER
+      //
+      // SOURCE = DRUG DETAILS ONLY
+      //
+      // NEVER selectedItems.
+      // NEVER Missing Items.
+      // NEVER rematched against warehouse.
+      // ========================================================
 
-      if (latestHasDrugDetails) {
-        final excelDrugDetailsItems = selectedWarehouseId == null
-            ? drugDetailsItems
-            : visibleDrugDetailsItems;
+      double drugDetailsTotal = 0;
 
-        for (final item in excelDrugDetailsItems) {
-          final originalItem = item["item"]?.toString() ?? "";
+      int processedDrugDetails = 0;
 
-          final qty = _toInt(item["qty"]);
+      if (hasDrugDetails && drugDetailsSheet != null) {
+        _appendExcelRow(drugDetailsSheet, [
+          "Item",
+          "Qty",
+          "Matched Item",
+          "Match %",
+          "Purchase Price",
+          "Sale Price",
+          "Offers",
+          "Total",
+        ]);
 
-          final purchase = _toDouble(item["purchase"]);
+        for (final item in drugDetailsForWarehouse) {
+          final name =
+              item["item"]?.toString().trim() ?? "";
 
-          final sale = _toDouble(item["sale"]);
+          final qty =
+          _toInt(item["qty"]);
 
-          // ------------------------------------------------------
-          // OFFERS
-          //
-          // First try the saved offer field.
-          // If Drug Details saved it using another common
-          // field name, we also check those fields.
-          // ------------------------------------------------------
-
-          String offer = item["offer"]?.toString().trim() ?? "";
-
-          if (offer.isEmpty) {
-            offer = item["offers"]?.toString().trim() ?? "";
+          if (name.isEmpty || qty <= 0) {
+            continue;
           }
 
-          if (offer.isEmpty) {
-            offer = item["offerText"]?.toString().trim() ?? "";
-          }
+          final matchedItem =
+              item["matchedItem"]?.toString().trim() ?? "";
 
-          if (offer.isEmpty) {
-            offer = item["promotion"]?.toString().trim() ?? "";
-          }
+          final matchPercent =
+          _toDouble(item["matchPercent"]);
+
+          final purchase =
+          _toDouble(item["purchase"]);
+
+          final sale =
+          _toDouble(item["sale"]);
+
+          final offer =
+              item["offer"]?.toString().trim() ?? "";
 
           final total = sale * qty;
 
-          totalSale += total;
+          drugDetailsTotal += total;
 
-          // ------------------------------------------------------
-          // ONLY THE SIX REQUESTED COLUMNS
-          // ------------------------------------------------------
-
-          _appendExcelRow(resultSheet, [
-            originalItem,
+          _appendExcelRow(drugDetailsSheet, [
+            name,
             qty.toString(),
+            matchedItem,
+            matchPercent > 0
+                ? "${matchPercent.toStringAsFixed(0)}%"
+                : "",
             purchase.toStringAsFixed(3),
             sale.toStringAsFixed(3),
-            offer.isEmpty ? "" : offer,
+            offer,
             total.toStringAsFixed(3),
           ]);
+
+          processedDrugDetails++;
+
+          if (mounted) {
+            setState(() {
+              statusText =
+              "Processing Drug Details "
+                  "$processedDrugDetails / "
+                  "${drugDetailsForWarehouse.length}...";
+            });
+          }
         }
+
+        _appendExcelRow(drugDetailsSheet, [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "TOTAL",
+          drugDetailsTotal.toStringAsFixed(3),
+        ]);
       }
 
-      // ==========================================================
-      // TOTAL
-      //
-      // Still using the same six columns.
-      // The total amount is placed in Total.
-      // ==========================================================
-
-      resultSheet.appendRow([]);
-
-      _appendExcelRow(resultSheet, [
-        "",
-        "",
-        "",
-        "",
-        "TOTAL",
-        totalSale.toStringAsFixed(3),
-      ]);
-
-      // ==========================================================
-      // ENCODE EXCEL
-      // ==========================================================
+      // ========================================================
+      // ENCODE
+      // ========================================================
 
       if (mounted) {
         setState(() {
-          statusText = "Encoding Excel file...";
+          statusText = "Creating Excel file...";
         });
       }
 
-      Uint8List? bytes;
+      final encoded = excel.encode();
 
-      try {
-        final encoded = excel.encode();
-
-        if (encoded == null || encoded.isEmpty) {
-          throw Exception("Excel encoder returned an empty file.");
-        }
-
-        bytes = Uint8List.fromList(encoded);
-      } catch (e, stack) {
-        debugPrint("EXCEL ENCODE ERROR: $e");
-
-        debugPrint(stack.toString());
-
-        throw Exception("Could not encode Excel workbook: $e");
+      if (encoded == null || encoded.isEmpty) {
+        throw Exception("Excel encoder returned an empty file.");
       }
 
-      // ==========================================================
-      // STORE GENERATED FILE
-      // ==========================================================
+      final bytes = Uint8List.fromList(encoded);
 
-      if (!mounted) {
-        return;
+      // ========================================================
+      // GENERATED SHEETS
+      // ========================================================
+
+      final generatedSheets = <String>[];
+
+      if (hasMissing) {
+        generatedSheets.add("Order");
+        generatedSheets.add("Missing Items");
       }
+
+      if (hasDrugDetails) {
+        generatedSheets.add("Drug Details Order");
+      }
+
+      // ========================================================
+      // DONE
+      // ========================================================
+
+      if (!mounted) return;
 
       setState(() {
         generatedFileBytes = bytes;
 
         isGenerating = false;
 
-        statusText = "Order generated successfully ✔";
+        if (hasMissing && hasDrugDetails) {
+          statusText =
+          "Excel generated successfully ✔\n"
+              "Order • Missing Items • Drug Details Order";
+        } else if (hasMissing) {
+          statusText =
+          "Excel generated successfully ✔\n"
+              "Order • Missing Items\n"
+              "$matchedCount matched • "
+              "$missingCount missing";
+        } else {
+          statusText =
+          "Excel generated successfully ✔\n"
+              "Drug Details Order";
+        }
       });
 
-      _showMessage("Excel file generated successfully.");
+      if (hasDrugDetails) {
+        await clearDrugDetailsItems();
+      }
+
+      _showMessage(
+        "Excel generated successfully: "
+            "${generatedSheets.join(" • ")}",
+      );
     } catch (e, stack) {
       debugPrint("GENERATE ORDER ERROR: $e");
 
@@ -2158,13 +2534,13 @@ class _OrderScreenState extends State<OrderScreen> {
       setState(() {
         isGenerating = false;
         generatedFileBytes = null;
+
         statusText = "Error generating Excel:\n$e";
       });
 
       _showMessage("Could not generate Excel file.");
     }
   }
-
   // ============================================================
   // SAVE HISTORY
   // ============================================================
@@ -2177,22 +2553,24 @@ class _OrderScreenState extends State<OrderScreen> {
 
     final history = prefs.getStringList("orders") ?? [];
 
+    // Count both independent sources.
+    //
+    // This does NOT use selectedItems.
+    final missingCount = buildMergedMissingItems().length;
+
+    final drugDetailsCount = visibleDrugDetailsItems.length;
+
     final order = {
       "fileName": fileName,
       "filePath": filePath,
       "date": DateFormat("yyyy-MM-dd").format(DateTime.now()),
-      "items": inventoryRows.length + drugDetailsItems.length,
+      "items": missingCount + drugDetailsCount,
     };
 
     history.add(jsonEncode(order));
 
     await prefs.setStringList("orders", history);
   }
-
-  // ============================================================
-  // SAVE FILE
-  // ============================================================
-
   Future<void> downloadFile(Uint8List bytes) async {
     if (bytes.isEmpty) {
       _showMessage("The generated Excel file is empty.");
@@ -2260,11 +2638,14 @@ class _OrderScreenState extends State<OrderScreen> {
         throw Exception("Excel file was not saved correctly.");
       }
 
-      debugPrint("EXCEL SAVED SUCCESSFULLY: $path ($savedBytes bytes)");
+      debugPrint(
+        "EXCEL SAVED SUCCESSFULLY: "
+        "$path ($savedBytes bytes)",
+      );
 
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
       // SAVE HISTORY
-      // ----------------------------------------------------------
+      // --------------------------------------------------------
 
       try {
         await saveOrderLocally(fileName: fileName, filePath: path);
@@ -2278,29 +2659,17 @@ class _OrderScreenState extends State<OrderScreen> {
         debugPrint(historyStack.toString());
       }
 
-      // ----------------------------------------------------------
-      // CLEAR DRUG DETAILS
-      // ----------------------------------------------------------
-
-      try {
-        final prefs = await SharedPreferences.getInstance();
-
-        await prefs.remove("drug_details_order_items");
-
-        debugPrint("DRUG DETAILS CLEARED");
-      } catch (clearError, clearStack) {
-        debugPrint("WARNING: COULD NOT CLEAR DRUG DETAILS");
-
-        debugPrint("CLEAR ERROR: $clearError");
-
-        debugPrint(clearStack.toString());
-      }
+      // --------------------------------------------------------
+      // IMPORTANT:
+      //
+      // DO NOT CLEAR DRUG DETAILS.
+      // --------------------------------------------------------
 
       if (!mounted) return;
 
       setState(() {
-        drugDetailsItems.clear();
         isSavingFile = false;
+
         statusText = "Excel saved successfully ✔\n$path";
       });
 
@@ -2316,6 +2685,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       setState(() {
         isSavingFile = false;
+
         statusText = "Error saving Excel file:\n$e";
       });
 
@@ -2325,6 +2695,10 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // RESET
+  //
+  // IMPORTANT:
+  //
+  // DRUG DETAILS IS NOT CLEARED.
   // ============================================================
 
   void resetScreen() {
@@ -2346,8 +2720,6 @@ class _OrderScreenState extends State<OrderScreen> {
       selectedWarehouseId = null;
 
       selectedWarehouse = null;
-
-
 
       statusText = "Ready";
     });
@@ -2522,7 +2894,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   icon: Icons.input_rounded,
                   title: "Order Input",
                   subtitle:
-                      "Add missing items or select items from Drug Details.",
+                      "Upload Missing Items and/or use Drug Details, then choose a warehouse and generate your order.",
                 ),
 
                 const SizedBox(height: 11),
@@ -2536,7 +2908,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     icon: Icons.medication_rounded,
                     title: "Drug Details",
                     subtitle:
-                        "Review, edit or delete Drug Details items for the selected warehouse.",
+                        "Review, edit or delete Drug Details items. They are generated in a separate sheet.",
                   ),
                   const SizedBox(height: 11),
                   buildDrugDetailsItemsCard(),
@@ -2546,7 +2918,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 _sectionTitle(
                   icon: Icons.warehouse_rounded,
                   title: "Warehouse",
-                  subtitle: "Choose the warehouse you want to order from.",
+                  subtitle: "Choose the warehouse you want to match against.",
                 ),
 
                 const SizedBox(height: 11),
@@ -2564,7 +2936,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     icon: Icons.compare_arrows_rounded,
                     title: "Matched Items",
                     subtitle:
-                        "Review the items matched with the warehouse inventory.",
+                        "Review matches from the uploaded Missing Items Excel list.",
                   ),
                   const SizedBox(height: 11),
                   buildWarehouseSearchResults(),
@@ -2596,7 +2968,11 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Widget _buildPageHeader() {
-    final itemCount = inventoryRows.length + drugDetailsItems.length;
+    final itemCount = buildMergedMissingItems().length;
+
+    final drugCount = selectedWarehouseId == null
+        ? drugDetailsItems.length
+        : visibleDrugDetailsItems.length;
 
     return Container(
       width: double.infinity,
@@ -2642,7 +3018,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  "Upload missing items, choose a warehouse and generate your order.",
+                  "Upload missing items and/or use Drug Details, choose a warehouse and generate your order.",
                   style: TextStyle(
                     color: textMuted,
                     fontSize: 12,
@@ -2652,7 +3028,8 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
-          if (itemCount > 0) _countBadge("$itemCount", omanGreen),
+          if (itemCount > 0 || drugCount > 0)
+            _countBadge("${itemCount + drugCount}", omanGreen),
         ],
       ),
     );
@@ -2668,8 +3045,7 @@ class _OrderScreenState extends State<OrderScreen> {
     final step2 = selectedWarehouseId != null;
 
     final step3 =
-        warehouseSearchResults.isNotEmpty ||
-        (drugDetailsItems.isNotEmpty && step2);
+        warehouseSearchResults.isNotEmpty || visibleDrugDetailsItems.isNotEmpty;
 
     final step4 = generatedFileBytes != null;
 
@@ -2947,9 +3323,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  count == 0
-                      ? "No items added"
-                      : "$count items ready for order",
+                  count == 0 ? "No items added" : "$count items saved",
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: textMuted, fontSize: 10),
@@ -3329,6 +3703,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // ============================================================
   // SELECTED SUMMARY
+  //
+  // UI ONLY
   // ============================================================
 
   Widget _buildSelectedSummary() {
@@ -3390,12 +3766,41 @@ class _OrderScreenState extends State<OrderScreen> {
   Widget _buildGenerateArea() {
     final hasMissing = buildMergedMissingItems().isNotEmpty;
 
-    final hasDrugDetails = drugDetailsItems.isNotEmpty;
+    final hasDrugDetails = visibleDrugDetailsItems.isNotEmpty;
+
+    final hasAnythingToGenerate = hasMissing || hasDrugDetails;
+
+    // ----------------------------------------------------------
+    // IMPORTANT:
+    //
+    // Missing Items requires warehouse inventory.
+    //
+    // Drug Details does NOT require orderRows because its
+    // stored items already contain their matched/pricing data.
+    // ----------------------------------------------------------
+
+    final missingReady =
+        !hasMissing || (selectedWarehouseId != null && orderRows.isNotEmpty);
 
     final canGenerate =
-        (hasMissing || hasDrugDetails) &&
-        !isGenerating &&
-        ((!hasMissing || orderRows.isNotEmpty) || hasDrugDetails);
+        hasAnythingToGenerate &&
+        selectedWarehouseId != null &&
+        missingReady &&
+        !isGenerating;
+
+    String description;
+
+    if (hasMissing && hasDrugDetails) {
+      description =
+          "Generate 3 sheets: Order, Missing Items and Drug Details Order.";
+    } else if (hasMissing) {
+      description =
+          "Generate Order and Missing Items from the uploaded Excel list.";
+    } else if (hasDrugDetails) {
+      description = "Generate Drug Details Order from Drug Details items.";
+    } else {
+      description = "Upload Missing Items or add Drug Details items.";
+    }
 
     return _card(
       child: Column(
@@ -3404,11 +3809,11 @@ class _OrderScreenState extends State<OrderScreen> {
             children: [
               _iconBox(Icons.file_download_outlined, omanRed),
               const SizedBox(width: 9),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       "Order File",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
@@ -3416,10 +3821,10 @@ class _OrderScreenState extends State<OrderScreen> {
                         color: textDark,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      "Generate an Excel order from the selected items.",
-                      style: TextStyle(color: textMuted, fontSize: 10),
+                      description,
+                      style: const TextStyle(color: textMuted, fontSize: 10),
                     ),
                   ],
                 ),
