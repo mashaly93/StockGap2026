@@ -12,12 +12,14 @@ class MainMenuScreen extends StatefulWidget {
   final String storeCode;
   final Timestamp? expireDate;
   final String role;
+  final String username;
 
   const MainMenuScreen({
     super.key,
     required this.storeCode,
     required this.expireDate,
     required this.role,
+    required this.username,
   });
 
   @override
@@ -274,7 +276,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                         const SizedBox(width: 8),
 
                         Text(
-                          widget.storeCode,
+                          widget.username,
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

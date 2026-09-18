@@ -792,10 +792,11 @@ class _HomescreenState extends State<Homescreen>
 
         if (!mounted) return;
 
-        Navigator.pushReplacement(
-          context,
-          _buildPageRoute(
-            StoreInventoryScreen(storeCode: storeCode, expireDate: expireDate),
+        await _showWelcomeScreen(
+          username: username,
+          nextPage: StoreInventoryScreen(
+            storeCode: storeCode,
+            expireDate: expireDate,
           ),
         );
 
@@ -817,14 +818,13 @@ class _HomescreenState extends State<Homescreen>
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        _buildPageRoute(
-          MainMenuScreen(
-            storeCode: storeCode,
-            expireDate: expireDate,
-            role: role.toString(),
-          ),
+      await _showWelcomeScreen(
+        username: username,
+        nextPage: MainMenuScreen(
+          storeCode: storeCode,
+          expireDate: expireDate,
+          role: role.toString(),
+          username: username,
         ),
       );
     } catch (e, stackTrace) {
@@ -836,6 +836,22 @@ class _HomescreenState extends State<Homescreen>
 
       _showMessage(e.toString(), isError: true);
     }
+  }
+
+  // ================================================================
+  // WELCOME SCREEN
+  // ================================================================
+
+  Future<void> _showWelcomeScreen({
+    required String username,
+    required Widget nextPage,
+  }) async {
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      _buildPageRoute(_WelcomeScreen(username: username, nextPage: nextPage)),
+    );
   }
 
   // ================================================================
@@ -1022,5 +1038,137 @@ class _HomescreenState extends State<Homescreen>
     await docRef.update({"devices": devices});
 
     return true;
+  }
+}
+
+class _WelcomeScreen extends StatefulWidget {
+  final String username;
+  final Widget nextPage;
+
+  const _WelcomeScreen({required this.username, required this.nextPage});
+
+  @override
+  State<_WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<_WelcomeScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..forward();
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.85,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => widget.nextPage),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _HomescreenState.backgroundColor,
+      body: SafeArea(
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 105,
+                    height: 105,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _HomescreenState.omanGreen.withOpacity(0.12),
+                          blurRadius: 25,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.asset(
+                        'assets/images/back.jpeg',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.store_rounded,
+                            size: 48,
+                            color: _HomescreenState.omanGreen,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  const Text(
+                    'Welcome',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      color: _HomescreenState.darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.username,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                      color: _HomescreenState.omanGreen,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Login successful',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

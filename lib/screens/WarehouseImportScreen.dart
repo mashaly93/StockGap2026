@@ -350,67 +350,11 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
   }
 
   // ============================================================
-  // FIND ITEM NAME COLUMN
-  // ============================================================
-
-  int _findNameColumn(List<String> header) {
-    const exactNames = [
-      "item name",
-      "product name",
-      "name",
-      "item",
-      "description",
-      "product",
-      "item description",
-      "product description",
-    ];
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (exactNames.contains(value)) {
-        return i;
-      }
-    }
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value.contains("item name") ||
-          value.contains("product name") ||
-          value.contains("description")) {
-        return i;
-      }
-    }
-
-    return 0;
-  }
-
-  // ============================================================
-  // FIND PRICE COLUMNS
-  // ============================================================
-
-  List<int> _findPriceColumns(List<String> header) {
-    final result = <int>[];
-
-    for (int i = 0; i < header.length; i++) {
-      final value = _normalizeHeader(header[i]);
-
-      if (value.contains("wh price") ||
-          value.contains("warehouse price") ||
-          value.contains("purchase price") ||
-          value.contains("buy price") ||
-          value == "price" ||
-          value.contains("price")) {
-        result.add(i);
-      }
-    }
-
-    return result;
-  }
-
-  // ============================================================
   // EXTRACT ITEMS
+  // FIXED COLUMNS:
+  // COLUMN 1 = NAME
+  // COLUMN 2 = PRICE
+  // COLUMN 3 = OFFER
   // ============================================================
 
   List<Map<String, dynamic>> extractItems(List<List<String>> rows) {
@@ -420,20 +364,14 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
     final headerIndex = _findHeaderRow(rows);
 
-    final header = rows[headerIndex];
-
     debugPrint("=================================");
     debugPrint("HEADER ROW INDEX: $headerIndex");
-    debugPrint("HEADER: $header");
+    debugPrint("HEADER: ${rows[headerIndex]}");
+    debugPrint("FIXED COLUMNS:");
+    debugPrint("COLUMN 1 = ITEM NAME");
+    debugPrint("COLUMN 2 = PRICE");
+    debugPrint("COLUMN 3 = OFFER");
     debugPrint("=================================");
-
-    final nameColumn = _findNameColumn(header);
-
-    final priceColumns = _findPriceColumns(header);
-
-    debugPrint("NAME COLUMN: $nameColumn");
-
-    debugPrint("PRICE COLUMNS: $priceColumns");
 
     final items = <Map<String, dynamic>>[];
 
@@ -442,45 +380,29 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
     for (int i = headerIndex + 1; i < rows.length; i++) {
       final row = rows[i];
 
-      if (row.isEmpty) {
+      // --------------------------------------------------------
+      // MUST HAVE AT LEAST NAME + PRICE
+      // --------------------------------------------------------
+
+      if (row.length < 2) {
         skipped++;
+
+        debugPrint("SKIPPED - NOT ENOUGH COLUMNS: $row");
+
         continue;
       }
 
       // --------------------------------------------------------
-      // ITEM NAME
+      // COLUMN 1 = ITEM NAME
       // --------------------------------------------------------
 
-      String name = "";
-
-      if (nameColumn < row.length) {
-        name = row[nameColumn].trim();
-      }
-
-      // --------------------------------------------------------
-      // FALLBACK NAME
-      // --------------------------------------------------------
-
-      if (name.isEmpty) {
-        for (final cell in row) {
-          final value = cell.trim();
-
-          if (value.isEmpty) {
-            continue;
-          }
-
-          if (_parsePrice(value) != null) {
-            continue;
-          }
-
-          name = value;
-
-          break;
-        }
-      }
+      final name = row.isNotEmpty ? row[0].trim() : "";
 
       if (name.isEmpty) {
         skipped++;
+
+        debugPrint("SKIPPED - NO NAME: $row");
+
         continue;
       }
 
@@ -497,74 +419,44 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
           normalizedName == "name" ||
           normalizedName == "description") {
         skipped++;
+
         continue;
       }
 
       // --------------------------------------------------------
-      // PRICE
+      // COLUMN 2 = PRICE
       // --------------------------------------------------------
 
-      double? price;
-
-      // --------------------------------------------------------
-      // KNOWN PRICE COLUMNS
-      // --------------------------------------------------------
-
-      for (final column in priceColumns) {
-        if (column >= row.length) {
-          continue;
-        }
-
-        final parsed = _parsePrice(row[column]);
-
-        if (parsed == null) {
-          continue;
-        }
-
-        if (price == null || parsed < price) {
-          price = parsed;
-        }
-      }
-
-      // --------------------------------------------------------
-      // FALLBACK PRICE
-      // --------------------------------------------------------
-
-      if (price == null) {
-        for (int column = 0; column < row.length; column++) {
-          if (column == nameColumn) {
-            continue;
-          }
-
-          final parsed = _parsePrice(row[column]);
-
-          if (parsed == null) {
-            continue;
-          }
-
-          if (price == null || parsed < price) {
-            price = parsed;
-          }
-        }
-      }
-
-      // --------------------------------------------------------
-      // NO PRICE
-      // --------------------------------------------------------
+      final price = _parsePrice(row[1]);
 
       if (price == null) {
         skipped++;
 
-        debugPrint("SKIPPED - NO PRICE: $row");
+        debugPrint("SKIPPED - NO VALID PRICE: $row");
 
         continue;
+      }
+
+      // --------------------------------------------------------
+      // COLUMN 3 = OFFER
+      // --------------------------------------------------------
+
+      String offer = "";
+
+      if (row.length >= 3) {
+        offer = row[2].trim();
       }
 
       // --------------------------------------------------------
       // ADD ITEM
       // --------------------------------------------------------
 
-      final item = {"name": name, "price": price, "active": true};
+      final item = {
+        "name": name,
+        "price": price,
+        "offer": offer,
+        "active": true,
+      };
 
       items.add(item);
 
@@ -572,7 +464,8 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
         debugPrint(
           "ITEM ${items.length}: "
           "name='$name' | "
-          "price=$price",
+          "price=$price | "
+          "offer='$offer'",
         );
       }
     }
@@ -789,9 +682,9 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
       if (mounted) {
         setState(() {
-          currentStage = "Detecting item names and prices...";
+          currentStage = "Detecting item names, prices and offers...";
 
-          status = "Detecting item names and prices...";
+          status = "Detecting item names, prices and offers...";
 
           progress = 0;
         });
@@ -806,8 +699,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       if (items.isEmpty) {
         throw Exception(
           "No valid items found.\n\n"
-          "The file must contain an item "
-          "name and a price.",
+          "The file must contain:\n"
+          "Column 1 = Item Name\n"
+          "Column 2 = Price\n"
+          "Column 3 = Offer",
         );
       }
 
@@ -886,6 +781,8 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
 
         final price = item["price"];
 
+        final offer = item["offer"]?.toString() ?? "";
+
         final docRef = inventoryRef.doc();
 
         batch.set(docRef, {
@@ -893,6 +790,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
           "original": name,
           "normalized": Matcher.normalize(name),
           "price": price,
+          "offer": offer,
           "active": true,
           "updatedAt": FieldValue.serverTimestamp(),
         });
@@ -1069,10 +967,10 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
           SnackBar(
             content: Text(
               "Uploaded successfully, but the quantity "
-                  "does not match.\n"
-                  "Required: ${items.length} | "
-                  "Found: "
-                  "${verifySnapshot.docs.length}",
+              "does not match.\n"
+              "Required: ${items.length} | "
+              "Found: "
+              "${verifySnapshot.docs.length}",
             ),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 7),
@@ -1124,7 +1022,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
       );
       debugPrint(
         "FIELDS: "
-        "name + original + normalized + price",
+        "name + original + normalized + price + offer",
       );
       debugPrint("QTY FIELD: NOT STORED");
       debugPrint("=================================");
@@ -1366,7 +1264,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
                   SizedBox(height: 5),
 
                   Text(
-                    "Item Name + Price",
+                    "Item Name + Price + Offer",
                     style: TextStyle(
                       color: omanGreen,
                       fontWeight: FontWeight.bold,
@@ -1423,7 +1321,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
               decoration: BoxDecoration(
                 color: omanGreen.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(14),
-
               ),
               child: const Icon(
                 Icons.cloud_done_rounded,
@@ -1459,7 +1356,7 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
                   const SizedBox(height: 5),
 
                   const Text(
-                    "Name + Original + Normalized + Price",
+                    "Name + Original + Normalized + Price + Offer",
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1641,7 +1538,6 @@ class _WarehouseImportScreenState extends State<WarehouseImportScreen> {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-
                         ),
                         child: Row(
                           children: [

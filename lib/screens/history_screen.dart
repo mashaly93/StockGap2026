@@ -250,6 +250,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 backgroundColor: omanRed,
                 foregroundColor: Colors.white,
                 elevation: 0,
+
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -301,11 +302,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
+
           backgroundColor: omanGreen,
+
           behavior: SnackBarBehavior.floating,
+
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
+
           margin: const EdgeInsets.all(12),
         ),
       );
@@ -542,98 +547,99 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
 
-      body: Column(
-        children: [
+      // ========================================================
+      // FULL PAGE SCROLL
+      // ========================================================
+      body: CustomScrollView(
+        slivers: [
           // ======================================================
           // OMAN HEADER STRIPE
           // ======================================================
 
-          Container(
-            height: 5,
 
-            decoration: const BoxDecoration(color: omanGreen),
-          ),
 
           // ======================================================
           // CALENDAR
           // ======================================================
-          Card(
-            margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          SliverToBoxAdapter(
+            child: Card(
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
 
-            elevation: 1.5,
+              elevation: 1.5,
 
-            color: Colors.white,
+              color: Colors.white,
 
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
 
-              side: BorderSide(color: Colors.grey.shade200),
-            ),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
 
-            child: Padding(
-              padding: const EdgeInsets.all(8),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
 
-              child: TableCalendar(
-                firstDay: DateTime(2024),
+                child: TableCalendar(
+                  firstDay: DateTime(2024),
 
-                lastDay: DateTime(2035),
+                  lastDay: DateTime(2035),
 
-                focusedDay: selectedDay,
+                  focusedDay: selectedDay,
 
-                selectedDayPredicate: (day) {
-                  return isSameDay(day, selectedDay);
-                },
+                  selectedDayPredicate: (day) {
+                    return isSameDay(day, selectedDay);
+                  },
 
-                onDaySelected: (selected, focused) {
-                  filterOrders(selected);
-                },
+                  onDaySelected: (selected, focused) {
+                    filterOrders(selected);
+                  },
 
-                headerStyle: const HeaderStyle(
-                  titleCentered: true,
+                  headerStyle: const HeaderStyle(
+                    titleCentered: true,
 
-                  titleTextStyle: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: textDark,
+                    titleTextStyle: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: textDark,
+                    ),
+
+                    leftChevronIcon: Icon(
+                      Icons.chevron_left_rounded,
+                      color: omanRed,
+                    ),
+
+                    rightChevronIcon: Icon(
+                      Icons.chevron_right_rounded,
+                      color: omanRed,
+                    ),
                   ),
 
-                  leftChevronIcon: Icon(
-                    Icons.chevron_left_rounded,
-                    color: omanRed,
+                  calendarStyle: CalendarStyle(
+                    todayDecoration: BoxDecoration(
+                      color: omanGreen,
+                      shape: BoxShape.circle,
+                    ),
+
+                    selectedDecoration: const BoxDecoration(
+                      color: omanRed,
+                      shape: BoxShape.circle,
+                    ),
+
+                    todayTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+
+                    selectedTextStyle: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+
+                    weekendTextStyle: const TextStyle(color: omanRed),
+
+                    defaultTextStyle: const TextStyle(color: textDark),
+
+                    outsideTextStyle: TextStyle(color: Colors.grey.shade400),
                   ),
-
-                  rightChevronIcon: Icon(
-                    Icons.chevron_right_rounded,
-                    color: omanRed,
-                  ),
-                ),
-
-                calendarStyle: CalendarStyle(
-                  todayDecoration: BoxDecoration(
-                    color: omanGreen,
-                    shape: BoxShape.circle,
-                  ),
-
-                  selectedDecoration: const BoxDecoration(
-                    color: omanRed,
-                    shape: BoxShape.circle,
-                  ),
-
-                  todayTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-
-                  selectedTextStyle: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-
-                  weekendTextStyle: const TextStyle(color: omanRed),
-
-                  defaultTextStyle: const TextStyle(color: textDark),
-
-                  outsideTextStyle: TextStyle(color: Colors.grey.shade400),
                 ),
               ),
             ),
@@ -642,147 +648,167 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // ======================================================
           // DATE TITLE
           // ======================================================
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
 
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
 
-            decoration: BoxDecoration(
-              color: Colors.white,
+              decoration: BoxDecoration(
+                color: Colors.white,
 
-              borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(12),
 
-              border: Border.all(color: Colors.grey.shade200),
-            ),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
 
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
 
-                  decoration: BoxDecoration(
-                    color: omanRed.withOpacity(0.10),
+                    decoration: BoxDecoration(
+                      color: omanRed.withOpacity(0.10),
 
-                    borderRadius: BorderRadius.circular(9),
-                  ),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
 
-                  child: const Icon(
-                    Icons.calendar_today_rounded,
-                    size: 17,
-                    color: omanRed,
-                  ),
-                ),
-
-                const SizedBox(width: 9),
-
-                Text(
-                  "${selectedDay.day.toString().padLeft(2, '0')}/"
-                  "${selectedDay.month.toString().padLeft(2, '0')}/"
-                  "${selectedDay.year}",
-
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: omanRed,
-                    fontSize: 14,
-                  ),
-                ),
-
-                const Spacer(),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-
-                  decoration: BoxDecoration(
-                    color: omanGreen.withOpacity(0.10),
-
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-
-                  child: Text(
-                    "${dayOrders.length} Orders",
-
-                    style: const TextStyle(
-                      color: omanGreen,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                    child: const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 17,
+                      color: omanRed,
                     ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(width: 9),
+
+                  Text(
+                    "${selectedDay.day.toString().padLeft(2, '0')}/"
+                    "${selectedDay.month.toString().padLeft(2, '0')}/"
+                    "${selectedDay.year}",
+
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: omanRed,
+                      fontSize: 14,
+                    ),
+                  ),
+
+                  const Spacer(),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+
+                    decoration: BoxDecoration(
+                      color: omanGreen.withOpacity(0.10),
+
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+
+                    child: Text(
+                      "${dayOrders.length} Orders",
+
+                      style: const TextStyle(
+                        color: omanGreen,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
-          const SizedBox(height: 4),
+          // ======================================================
+          // DIVIDER
+          // ======================================================
+          const SliverToBoxAdapter(
+            child: Divider(height: 1, indent: 14, endIndent: 14),
+          ),
 
-          const Divider(height: 1, indent: 14, endIndent: 14),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
+          // ======================================================
+          // LOADING
+          // ======================================================
+          if (loading)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+
+              child: Center(child: CircularProgressIndicator(color: omanRed)),
+            )
+          // ======================================================
+          // NO ORDERS
+          // ======================================================
+          else if (dayOrders.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+
+                  children: [
+                    Container(
+                      width: 82,
+                      height: 82,
+
+                      decoration: BoxDecoration(
+                        color: omanRed.withOpacity(0.08),
+
+                        shape: BoxShape.circle,
+                      ),
+
+                      child: const Icon(
+                        Icons.history_rounded,
+                        size: 43,
+                        color: omanRed,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    const Text(
+                      "No Orders",
+
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: textDark,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      "No saved orders for this date.",
+
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            )
           // ======================================================
           // ORDERS
           // ======================================================
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator(color: omanRed))
-                : dayOrders.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+          else
+            SliverPadding(
+              padding: const EdgeInsets.only(top: 8, bottom: 20),
 
-                      children: [
-                        Container(
-                          width: 82,
-                          height: 82,
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final order = dayOrders[index];
 
-                          decoration: BoxDecoration(
-                            color: omanRed.withOpacity(0.08),
-
-                            shape: BoxShape.circle,
-                          ),
-
-                          child: const Icon(
-                            Icons.history_rounded,
-                            size: 43,
-                            color: omanRed,
-                          ),
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        const Text(
-                          "No Orders",
-
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: textDark,
-                          ),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        Text(
-                          "No saved orders for this date.",
-
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.only(top: 8, bottom: 20),
-
-                    itemCount: dayOrders.length,
-
-                    itemBuilder: (context, index) {
-                      final order = dayOrders[index];
-
-                      return buildOrderCard(order, index);
-                    },
-                  ),
-          ),
+                  return buildOrderCard(order, index);
+                }, childCount: dayOrders.length),
+              ),
+            ),
         ],
       ),
     );
