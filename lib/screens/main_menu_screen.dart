@@ -58,7 +58,10 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
+        Tween<Offset>(
+          begin: const Offset(0, 0.06),
+          end: Offset.zero,
+        ).animate(
           CurvedAnimation(
             parent: _animationController,
             curve: Curves.easeOutCubic,
@@ -92,7 +95,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     Navigator.pushAndRemoveUntil(
       context,
       _buildPageRoute(const Homescreen()),
-      (route) => false,
+          (route) => false,
     );
   }
 
@@ -114,16 +117,22 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         );
 
         final slideAnimation =
-            Tween<Offset>(
-              begin: const Offset(0.035, 0),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            );
+        Tween<Offset>(
+          begin: const Offset(0.035, 0),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          ),
+        );
 
         return FadeTransition(
           opacity: fadeAnimation,
-          child: SlideTransition(position: slideAnimation, child: child),
+          child: SlideTransition(
+            position: slideAnimation,
+            child: child,
+          ),
         );
       },
     );
@@ -143,7 +152,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         child: Column(
           children: [
             _buildTopBar(),
-            Expanded(child: _buildBody(isStore)),
+            Expanded(
+              child: _buildBody(isStore),
+            ),
           ],
         ),
       ),
@@ -185,7 +196,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                     decoration: BoxDecoration(
                       color: const Color(0xfffff3f4),
                       borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: omanRed.withOpacity(0.10)),
+                      border: Border.all(
+                        color: omanRed.withOpacity(0.10),
+                      ),
                     ),
                     child: Image.asset(
                       'assets/images/back.jpeg',
@@ -198,6 +211,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   // ==================================================
                   // BRAND
                   // ==================================================
+
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,6 +260,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   // ==================================================
                   // USER INFO
                   // ==================================================
+
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 13,
@@ -254,7 +269,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                     decoration: BoxDecoration(
                       color: const Color(0xfff8faf9),
                       borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: omanGreen.withOpacity(0.10)),
+                      border: Border.all(
+                        color: omanGreen.withOpacity(0.10),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -292,6 +309,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   // ==================================================
                   // LOGOUT
                   // ==================================================
+
                   Tooltip(
                     message: "Logout",
                     child: Material(
@@ -333,10 +351,15 @@ class _MainMenuScreenState extends State<MainMenuScreen>
 
   Widget _buildBody(bool isStore) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 35),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 30,
+        vertical: 35,
+      ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1000),
+          constraints: const BoxConstraints(
+            maxWidth: 1000,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -357,7 +380,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   // ================================================================
 
   Widget _buildWelcomeSection(bool isStore) {
-    final title = isStore ? "Warehouse Dashboard" : "Pharmacy Dashboard";
+    final title = isStore
+        ? "Warehouse Dashboard"
+        : "Pharmacy Dashboard";
 
     final subtitle = isStore
         ? "Manage your warehouse inventory and stock."
@@ -393,7 +418,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   decoration: BoxDecoration(
                     color: omanWhite,
                     borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(
+                      color: Colors.grey.shade300,
+                    ),
                   ),
                 ),
 
@@ -489,7 +516,12 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           index: 1,
           animation: _animationController,
           onTap: () {
-            Navigator.push(context, _buildPageRoute(const DrugSearchScreen()));
+            Navigator.push(
+              context,
+              _buildPageRoute(
+                const DrugSearchScreen(),
+              ),
+            );
           },
         ),
       );
@@ -510,7 +542,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
             Navigator.push(
               context,
               _buildPageRoute(
-                WarehouseItemsScreen(pharmacyCode: widget.storeCode),
+                WarehouseItemsScreen(
+                  pharmacyCode: widget.storeCode,
+                ),
               ),
             );
           },
@@ -518,16 +552,43 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       );
 
       // ------------------------------------------------------------
+      // UPDATE PRICES
+      // ------------------------------------------------------------
+
+      if (false) {
+        cards.add(
+          MenuCard(
+            title: "Update Prices",
+            description: "Update drug prices from Excel",
+            icon: Icons.price_change_outlined,
+            color: omanGreen,
+            index: 3,
+            animation: _animationController,
+            onTap: () {
+              Navigator.push(
+                context,
+                _buildPageRoute(
+                  const ImportDrugScreen(),
+                ),
+              );
+            },
+          ),
+        );
+      }
+
+      // ------------------------------------------------------------
       // MINISTRY OF HEALTH LIST
       // ------------------------------------------------------------
 
+      // الكارت القديم يفضل موجود كمرجع لو احتجته لاحقاً.
+      //
       // cards.add(
       //   MenuCard(
       //     title: "Ministry List",
       //     description: "Upload Ministry of Health drug list",
       //     icon: Icons.upload_file_rounded,
       //     color: const Color(0xff7b61ff),
-      //     index: 3,
+      //     index: 4,
       //     animation: _animationController,
       //     onTap: () {
       //       Navigator.push(
@@ -555,13 +616,19 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           index: 0,
           animation: _animationController,
           onTap: () {
-            _showModernMessage("Inventory screen coming soon");
+            _showModernMessage(
+              "Inventory screen coming soon",
+            );
           },
         ),
       );
     }
 
-    return Wrap(spacing: 20, runSpacing: 20, children: cards);
+    return Wrap(
+      spacing: 20,
+      runSpacing: 20,
+      children: cards,
+    );
   }
 
   // ================================================================
@@ -580,11 +647,19 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        margin: const EdgeInsets.fromLTRB(
+          24,
+          0,
+          24,
+          24,
+        ),
         padding: EdgeInsets.zero,
         duration: const Duration(seconds: 3),
         content: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 13,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xff20242b),
             borderRadius: BorderRadius.circular(14),
@@ -671,7 +746,11 @@ class _MenuCardState extends State<MenuCard> {
 
     final cardAnimation = CurvedAnimation(
       parent: widget.animation,
-      curve: Interval(safeStart, 1.0, curve: Curves.easeOutCubic),
+      curve: Interval(
+        safeStart,
+        1.0,
+        curve: Curves.easeOutCubic,
+      ),
     );
 
     return FadeTransition(
@@ -707,13 +786,14 @@ class _MenuCardState extends State<MenuCard> {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut,
 
-              // ====================================================
-              // SAME SIZE
-              // ====================================================
               width: 300,
               height: 150,
 
-              transform: Matrix4.translationValues(0, isHovered ? -4 : 0, 0),
+              transform: Matrix4.translationValues(
+                0,
+                isHovered ? -4 : 0,
+                0,
+              ),
 
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -727,9 +807,14 @@ class _MenuCardState extends State<MenuCard> {
 
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isHovered ? 0.10 : 0.045),
+                    color: Colors.black.withOpacity(
+                      isHovered ? 0.10 : 0.045,
+                    ),
                     blurRadius: isHovered ? 22 : 12,
-                    offset: Offset(0, isHovered ? 10 : 5),
+                    offset: Offset(
+                      0,
+                      isHovered ? 10 : 5,
+                    ),
                   ),
                 ],
               ),
@@ -749,11 +834,17 @@ class _MenuCardState extends State<MenuCard> {
                     height: 58,
 
                     decoration: BoxDecoration(
-                      color: widget.color.withOpacity(isHovered ? 0.15 : 0.09),
+                      color: widget.color.withOpacity(
+                        isHovered ? 0.15 : 0.09,
+                      ),
                       borderRadius: BorderRadius.circular(17),
                     ),
 
-                    child: Icon(widget.icon, size: 29, color: widget.color),
+                    child: Icon(
+                      widget.icon,
+                      size: 29,
+                      color: widget.color,
+                    ),
                   ),
 
                   const SizedBox(width: 16),
@@ -761,10 +852,13 @@ class _MenuCardState extends State<MenuCard> {
                   // ==================================================
                   // TEXT
                   // ==================================================
+
                   Expanded(
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment:
+                      MainAxisAlignment.center,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
                       children: [
                         Text(
                           widget.title,
@@ -797,6 +891,7 @@ class _MenuCardState extends State<MenuCard> {
                   // ==================================================
                   // ARROW
                   // ==================================================
+
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
 
@@ -813,7 +908,9 @@ class _MenuCardState extends State<MenuCard> {
                     child: Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 13,
-                      color: isHovered ? widget.color : Colors.grey.shade400,
+                      color: isHovered
+                          ? widget.color
+                          : Colors.grey.shade400,
                     ),
                   ),
                 ],

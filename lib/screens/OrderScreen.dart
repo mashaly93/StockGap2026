@@ -2001,7 +2001,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (mounted) {
         setState(() {
           statusText =
-          "Please upload Missing Items Excel or add Drug Details items.";
+              "Please upload Missing Items Excel or add Drug Details items.";
         });
       }
 
@@ -2041,7 +2041,7 @@ class _OrderScreenState extends State<OrderScreen> {
       if (mounted) {
         setState(() {
           statusText =
-          "Warehouse inventory is empty. Please select a warehouse with inventory.";
+              "Warehouse inventory is empty. Please select a warehouse with inventory.";
         });
       }
 
@@ -2169,8 +2169,7 @@ class _OrderScreenState extends State<OrderScreen> {
           Map<String, dynamic>? bestWarehouse;
 
           for (final warehouse in orderRows) {
-            final warehouseItem =
-                warehouse["name"]?.toString().trim() ?? "";
+            final warehouseItem = warehouse["name"]?.toString().trim() ?? "";
 
             if (warehouseItem.isEmpty) {
               continue;
@@ -2189,17 +2188,13 @@ class _OrderScreenState extends State<OrderScreen> {
           // ====================================================
 
           if (bestWarehouse != null && bestScore >= matchThreshold) {
-            final matchedItem =
-                bestWarehouse["name"]?.toString().trim() ?? "";
+            final matchedItem = bestWarehouse["name"]?.toString().trim() ?? "";
 
-            final purchase =
-            _toDouble(bestWarehouse["purchase"]);
+            final purchase = _toDouble(bestWarehouse["purchase"]);
 
-            final sale =
-            _toDouble(bestWarehouse["sale"]);
+            final sale = _toDouble(bestWarehouse["sale"]);
 
-            final offer =
-                bestWarehouse["offer"]?.toString().trim() ?? "";
+            final offer = bestWarehouse["offer"]?.toString().trim() ?? "";
 
             final total = sale * qty;
 
@@ -2218,13 +2213,11 @@ class _OrderScreenState extends State<OrderScreen> {
               total.toStringAsFixed(3),
             ]);
           }
-
           // ====================================================
           // NO MATCH >= 60%
           //
           // Keep the best similar warehouse item anyway.
           // ====================================================
-
           else {
             missingCount++;
 
@@ -2232,15 +2225,11 @@ class _OrderScreenState extends State<OrderScreen> {
               "item": item,
               "qty": qty,
               "similarItem":
-              bestWarehouse?["name"]?.toString().trim() ??
-                  "NOT MATCHED",
+                  bestWarehouse?["name"]?.toString().trim() ?? "NOT MATCHED",
               "score": bestScore,
-              "purchase":
-              bestWarehouse?["purchase"] ?? 0,
-              "sale":
-              bestWarehouse?["sale"] ?? 0,
-              "offer":
-              bestWarehouse?["offer"]?.toString().trim() ?? "",
+              "purchase": bestWarehouse?["purchase"] ?? 0,
+              "sale": bestWarehouse?["sale"] ?? 0,
+              "offer": bestWarehouse?["offer"]?.toString().trim() ?? "",
             });
           }
 
@@ -2249,7 +2238,7 @@ class _OrderScreenState extends State<OrderScreen> {
           if (mounted) {
             setState(() {
               statusText =
-              "Processing Missing Items "
+                  "Processing Missing Items "
                   "$processedMissing / "
                   "${mergedMissingItems.length}...";
             });
@@ -2275,16 +2264,7 @@ class _OrderScreenState extends State<OrderScreen> {
         // ------------------------------------------------------
 
         if (notMatchedItems.isNotEmpty) {
-          _appendExcelRow(missingSheet, [
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-          ]);
+          _appendExcelRow(missingSheet, ["", "", "", "", "", "", "", ""]);
 
           _appendExcelRow(missingSheet, [
             "NOT MATCHED ITEMS",
@@ -2309,27 +2289,20 @@ class _OrderScreenState extends State<OrderScreen> {
           ]);
 
           for (final data in notMatchedItems) {
-            final item =
-                data["item"]?.toString() ?? "";
+            final item = data["item"]?.toString() ?? "";
 
-            final qty =
-            _toInt(data["qty"]);
+            final qty = _toInt(data["qty"]);
 
             final similarItem =
-                data["similarItem"]?.toString() ??
-                    "NOT MATCHED";
+                data["similarItem"]?.toString() ?? "NOT MATCHED";
 
-            final score =
-            _toDouble(data["score"]);
+            final score = _toDouble(data["score"]);
 
-            final purchase =
-            _toDouble(data["purchase"]);
+            final purchase = _toDouble(data["purchase"]);
 
-            final sale =
-            _toDouble(data["sale"]);
+            final sale = _toDouble(data["sale"]);
 
-            final offer =
-                data["offer"]?.toString() ?? "";
+            final offer = data["offer"]?.toString() ?? "";
 
             final total = sale * qty;
 
@@ -2389,30 +2362,23 @@ class _OrderScreenState extends State<OrderScreen> {
         ]);
 
         for (final item in drugDetailsForWarehouse) {
-          final name =
-              item["item"]?.toString().trim() ?? "";
+          final name = item["item"]?.toString().trim() ?? "";
 
-          final qty =
-          _toInt(item["qty"]);
+          final qty = _toInt(item["qty"]);
 
           if (name.isEmpty || qty <= 0) {
             continue;
           }
 
-          final matchedItem =
-              item["matchedItem"]?.toString().trim() ?? "";
+          final matchedItem = item["matchedItem"]?.toString().trim() ?? "";
 
-          final matchPercent =
-          _toDouble(item["matchPercent"]);
+          final matchPercent = _toDouble(item["matchPercent"]);
 
-          final purchase =
-          _toDouble(item["purchase"]);
+          final purchase = _toDouble(item["purchase"]);
 
-          final sale =
-          _toDouble(item["sale"]);
+          final sale = _toDouble(item["sale"]);
 
-          final offer =
-              item["offer"]?.toString().trim() ?? "";
+          final offer = item["offer"]?.toString().trim() ?? "";
 
           final total = sale * qty;
 
@@ -2422,9 +2388,7 @@ class _OrderScreenState extends State<OrderScreen> {
             name,
             qty.toString(),
             matchedItem,
-            matchPercent > 0
-                ? "${matchPercent.toStringAsFixed(0)}%"
-                : "",
+            matchPercent > 0 ? "${matchPercent.toStringAsFixed(0)}%" : "",
             purchase.toStringAsFixed(3),
             sale.toStringAsFixed(3),
             offer,
@@ -2436,7 +2400,7 @@ class _OrderScreenState extends State<OrderScreen> {
           if (mounted) {
             setState(() {
               statusText =
-              "Processing Drug Details "
+                  "Processing Drug Details "
                   "$processedDrugDetails / "
                   "${drugDetailsForWarehouse.length}...";
             });
@@ -2501,17 +2465,17 @@ class _OrderScreenState extends State<OrderScreen> {
 
         if (hasMissing && hasDrugDetails) {
           statusText =
-          "Excel generated successfully ✔\n"
+              "Excel generated successfully ✔\n"
               "Order • Missing Items • Drug Details Order";
         } else if (hasMissing) {
           statusText =
-          "Excel generated successfully ✔\n"
+              "Excel generated successfully ✔\n"
               "Order • Missing Items\n"
               "$matchedCount matched • "
               "$missingCount missing";
         } else {
           statusText =
-          "Excel generated successfully ✔\n"
+              "Excel generated successfully ✔\n"
               "Drug Details Order";
         }
       });
@@ -2522,7 +2486,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
       _showMessage(
         "Excel generated successfully: "
-            "${generatedSheets.join(" • ")}",
+        "${generatedSheets.join(" • ")}",
       );
     } catch (e, stack) {
       debugPrint("GENERATE ORDER ERROR: $e");
@@ -2541,6 +2505,7 @@ class _OrderScreenState extends State<OrderScreen> {
       _showMessage("Could not generate Excel file.");
     }
   }
+
   // ============================================================
   // SAVE HISTORY
   // ============================================================
@@ -2571,6 +2536,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
     await prefs.setStringList("orders", history);
   }
+
   Future<void> downloadFile(Uint8List bytes) async {
     if (bytes.isEmpty) {
       _showMessage("The generated Excel file is empty.");

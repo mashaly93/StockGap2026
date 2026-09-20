@@ -221,8 +221,8 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
           final active =
               data["active"] == true ||
-              data["isActive"] == true ||
-              data["active"]?.toString().toLowerCase() == "true";
+                  data["isActive"] == true ||
+                  data["active"]?.toString().toLowerCase() == "true";
 
           loaded.add({
             "itemId": doc.id,
@@ -418,7 +418,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       final current = prefs.getStringList(historyKey) ?? <String>[];
 
       current.removeWhere(
-        (item) => item.toLowerCase().trim() == normalized.toLowerCase().trim(),
+            (item) => item.toLowerCase().trim() == normalized.toLowerCase().trim(),
       );
 
       current.insert(0, normalized);
@@ -549,10 +549,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
         final name =
             map["name"]?.toString() ??
-            map["title"]?.toString() ??
-            map["storeName"]?.toString() ??
-            map["warehouseName"]?.toString() ??
-            "";
+                map["title"]?.toString() ??
+                map["storeName"]?.toString() ??
+                map["warehouseName"]?.toString() ??
+                "";
 
         if (name.trim().isNotEmpty) {
           return name.trim();
@@ -606,10 +606,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
         final text =
             map["text"]?.toString() ??
-            map["title"]?.toString() ??
-            map["description"]?.toString() ??
-            map["name"]?.toString() ??
-            "";
+                map["title"]?.toString() ??
+                map["description"]?.toString() ??
+                map["name"]?.toString() ??
+                "";
 
         if (text.trim().isNotEmpty) {
           return text.trim();
@@ -638,10 +638,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
           final text =
               map["text"]?.toString() ??
-              map["title"]?.toString() ??
-              map["description"]?.toString() ??
-              map["name"]?.toString() ??
-              "";
+                  map["title"]?.toString() ??
+                  map["description"]?.toString() ??
+                  map["name"]?.toString() ??
+                  "";
 
           if (text.trim().isNotEmpty) {
             return text.trim();
@@ -838,7 +838,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
       _showMessage(
         "$name × $quantity = "
-        "${total.toStringAsFixed(3)} OMR",
+            "${total.toStringAsFixed(3)} OMR",
       );
     } catch (e, stackTrace) {
       debugPrint("ERROR ADDING WAREHOUSE ITEM TO ORDER: $e");
@@ -1214,10 +1214,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
                                   IconButton(
                                     onPressed: quantity > 1
                                         ? () {
-                                            setSheetState(() {
-                                              quantity--;
-                                            });
-                                          }
+                                      setSheetState(() {
+                                        quantity--;
+                                      });
+                                    }
                                         : null,
                                     icon: const Icon(
                                       Icons.remove_circle_outline,
@@ -1280,7 +1280,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
                           ),
                           label: Text(
                             "ADD $quantity TO ORDER • "
-                            "${totalPrice.toStringAsFixed(3)} OMR",
+                                "${totalPrice.toStringAsFixed(3)} OMR",
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -1450,13 +1450,13 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
             onPressed: refreshing ? null : refreshFromFirebase,
             icon: refreshing
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: omanGreen,
-                      strokeWidth: 2,
-                    ),
-                  )
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                color: omanGreen,
+                strokeWidth: 2,
+              ),
+            )
                 : const Icon(Icons.refresh_rounded, color: omanGreen),
           ),
 
@@ -1504,9 +1504,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
                 suffixIcon: controller.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: clearSearch,
-                      )
+                  icon: const Icon(Icons.clear),
+                  onPressed: clearSearch,
+                )
                     : null,
 
                 filled: true,
@@ -1595,7 +1595,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
               Text(
                 "Your recent warehouse searches\n"
-                "will appear here",
+                    "will appear here",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,

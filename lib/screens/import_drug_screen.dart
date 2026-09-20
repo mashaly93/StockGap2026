@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../service/drug_update_service.dart';
+import '../service/drug_service.dart';
 
 class ImportDrugScreen extends StatefulWidget {
   const ImportDrugScreen({super.key});
@@ -36,7 +37,7 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
   final DrugUpdateService _updateService = DrugUpdateService();
 
   // ============================================================
-  // IMPORT EXCEL
+  // IMPORT EXCEL - OLD FUNCTION
   // ============================================================
 
   Future<void> importExcel() async {
@@ -59,7 +60,6 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
     setState(() {
       loading = true;
-
       status = "Updating drugs...\nPlease wait";
     });
 
@@ -72,7 +72,6 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
       setState(() {
         loading = false;
-
         status = "Finished ✔\n$count drugs updated";
       });
 
@@ -94,7 +93,6 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
       setState(() {
         loading = false;
-
         status = "Error:\n$e";
       });
 
@@ -105,6 +103,190 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
         ..showSnackBar(
           SnackBar(
             content: const Text("Failed to update drug database."),
+            backgroundColor: omanRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(12),
+          ),
+        );
+    }
+  }
+
+  // ============================================================
+  // UPDATE PRICES ONLY
+  // ============================================================
+
+  Future<void> importPrices() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ["xlsx", "xls"],
+    );
+
+    if (result == null) return;
+
+    final filePath = result.files.single.path;
+
+    if (filePath == null || filePath.isEmpty) {
+      return;
+    }
+
+    final file = File(filePath);
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = true;
+      status = "Updating prices...\nPlease wait";
+    });
+
+    try {
+      final bytes = await file.readAsBytes();
+
+      // ========================================================
+      // 1. UPDATE FIRESTORE
+      // ========================================================
+
+      final count = await _updateService.updatePricesFromExcel(bytes);
+
+      // ========================================================
+      // 2. REFRESH HIVE FROM FIREBASE
+      // ========================================================
+
+      if (count > 0) {
+        final drugService = DrugService();
+
+        await drugService.refreshAllDrugs();
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+        status = "Finished ✔\n$count prices updated";
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text("$count prices updated successfully"),
+            backgroundColor: omanGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(12),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+        status = "Error:\n$e";
+      });
+
+      debugPrint(e.toString());
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text("Failed to update prices."),
+            backgroundColor: omanRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(12),
+          ),
+        );
+    }
+  }
+
+  // ============================================================
+  // ADD NEW DRUGS
+  // ============================================================
+
+  Future<void> importNewDrugs() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ["xlsx", "xls"],
+    );
+
+    if (result == null) return;
+
+    final filePath = result.files.single.path;
+
+    if (filePath == null || filePath.isEmpty) {
+      return;
+    }
+
+    final file = File(filePath);
+
+    if (!mounted) return;
+
+    setState(() {
+      loading = true;
+      status = "Adding new drugs...\nPlease wait";
+    });
+
+    try {
+      final bytes = await file.readAsBytes();
+
+      // ========================================================
+      // 1. ADD NEW DRUGS TO FIRESTORE
+      // ========================================================
+
+      final count = await _updateService.addNewDrugsFromExcel(bytes);
+
+      // ========================================================
+      // 2. REFRESH HIVE FROM FIREBASE
+      // ========================================================
+
+      if (count > 0) {
+        final drugService = DrugService();
+
+        await drugService.refreshAllDrugs();
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+        status = "Finished ✔\n$count new drugs added";
+      });
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text("$count new drugs added successfully"),
+            backgroundColor: omanGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(12),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+        status = "Error:\n$e";
+      });
+
+      debugPrint(e.toString());
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text("Failed to add new drugs."),
             backgroundColor: omanRed,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -136,11 +318,8 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
       // ========================================================
       appBar: AppBar(
         backgroundColor: omanRed,
-
         foregroundColor: Colors.white,
-
         elevation: 0,
-
         centerTitle: true,
 
         title: const Text(
@@ -176,12 +355,10 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
                       Card(
                         color: Colors.white,
-
                         elevation: 2,
 
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
-
                           side: BorderSide(color: Colors.grey.shade200),
                         ),
 
@@ -200,7 +377,6 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
                                 decoration: BoxDecoration(
                                   color: omanRed.withOpacity(0.08),
-
                                   shape: BoxShape.circle,
 
                                   border: Border.all(
@@ -222,7 +398,6 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                               // ========================================
                               const Text(
                                 "Update Drug Database",
-
                                 textAlign: TextAlign.center,
 
                                 style: TextStyle(
@@ -253,11 +428,10 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                               const SizedBox(height: 24),
 
                               // ========================================
-                              // SELECT BUTTON
+                              // OLD UPDATE BUTTON
                               // ========================================
                               SizedBox(
                                 width: double.infinity,
-
                                 height: 52,
 
                                 child: ElevatedButton.icon(
@@ -267,6 +441,7 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                                       ? const SizedBox(
                                           width: 21,
                                           height: 21,
+
                                           child: CircularProgressIndicator(
                                             strokeWidth: 2.5,
                                             color: Colors.white,
@@ -275,7 +450,9 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                                       : const Icon(Icons.upload_file_rounded),
 
                                   label: Text(
-                                    loading ? "Updating..." : "Select Excel",
+                                    loading
+                                        ? "Updating..."
+                                        : "Update Drug Database",
 
                                     style: const TextStyle(
                                       fontSize: 15,
@@ -285,6 +462,112 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: omanRed,
+                                    foregroundColor: Colors.white,
+
+                                    disabledBackgroundColor:
+                                        Colors.grey.shade400,
+
+                                    disabledForegroundColor: Colors.white,
+
+                                    elevation: 0,
+
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // ========================================
+                              // UPDATE PRICES ONLY BUTTON
+                              // ========================================
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+
+                                child: ElevatedButton.icon(
+                                  onPressed: loading ? null : importPrices,
+
+                                  icon: loading
+                                      ? const SizedBox(
+                                          width: 21,
+                                          height: 21,
+
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.price_change_rounded),
+
+                                  label: Text(
+                                    loading
+                                        ? "Updating..."
+                                        : "Update Prices Only",
+
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: omanGreen,
+                                    foregroundColor: Colors.white,
+
+                                    disabledBackgroundColor:
+                                        Colors.grey.shade400,
+
+                                    disabledForegroundColor: Colors.white,
+
+                                    elevation: 0,
+
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // ========================================
+                              // ADD NEW DRUGS BUTTON
+                              // ========================================
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+
+                                child: ElevatedButton.icon(
+                                  onPressed: loading ? null : importNewDrugs,
+
+                                  icon: loading
+                                      ? const SizedBox(
+                                          width: 21,
+                                          height: 21,
+
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.add_circle_outline_rounded,
+                                        ),
+
+                                  label: Text(
+                                    loading ? "Adding..." : "Add New Drugs",
+
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xff2563EB),
 
                                     foregroundColor: Colors.white,
 
@@ -318,7 +601,7 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                                     const SizedBox(height: 12),
 
                                     Text(
-                                      "Updating drugs...\n"
+                                      "Updating...\n"
                                       "Please wait",
 
                                       textAlign: TextAlign.center,
@@ -448,7 +731,20 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
 
                             Expanded(
                               child: Text(
-                                "Supported files: .xlsx and .xls",
+                                "Supported files: .xlsx and .xls\n\n"
+                                "Update Prices Only:\n"
+                                "Column A = Registration No.\n"
+                                "Column B = New Price\n\n"
+                                "Add New Drugs:\n"
+                                "Column A = Regn. No.\n"
+                                "Column B = Trade Name\n"
+                                "Column C = Pack Size\n"
+                                "Column D = Active 1\n"
+                                "Column E = Active 2\n"
+                                "Column F = Local Agent\n"
+                                "Column G = Mfr Name\n"
+                                "Column H = Appr. RP\n\n"
+                                "Existing drugs will not be modified.",
 
                                 style: TextStyle(
                                   color: textGrey,
@@ -473,8 +769,10 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                           Container(
                             width: 45,
                             height: 4,
+
                             decoration: BoxDecoration(
                               color: omanRed,
+
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
@@ -484,8 +782,10 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                           Container(
                             width: 45,
                             height: 4,
+
                             decoration: BoxDecoration(
                               color: Colors.white,
+
                               borderRadius: BorderRadius.circular(10),
 
                               border: Border.all(color: Colors.grey.shade300),
@@ -497,8 +797,10 @@ class _ImportDrugScreenState extends State<ImportDrugScreen> {
                           Container(
                             width: 45,
                             height: 4,
+
                             decoration: BoxDecoration(
                               color: omanGreen,
+
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),

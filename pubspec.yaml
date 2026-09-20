@@ -3,7 +3,7 @@
   description: "Full Stock Oman"
   publish_to: 'none'
 
-  version: 1.0.3+5
+  version: 1.0.4+6
 
   environment:
     sdk: ^3.11.5
@@ -50,6 +50,6 @@
     publisher_display_name: Mashaly1993
     identity_name: Mashaly1993.FullStockOman
     publisher: CN=C0682A8E-25A8-46CB-8456-6DD856144914
-    msix_version: 1.0.3.0
+    msix_version: 1.0.4.0
     store: true
     logo_path: assets/images/full_stock_oman.png
