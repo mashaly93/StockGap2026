@@ -34,6 +34,13 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
   List<String> searchHistory = [];
 
   // ================================================================
+  // WAREHOUSE NAMES
+  // STORE001 -> مخزن المرتفعة
+  // ================================================================
+
+  final Map<String, String> warehouseNames = {};
+
+  // ================================================================
   // STATES
   // ================================================================
 
@@ -47,9 +54,11 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
   // CACHE
   // ================================================================
 
-  static const String cacheKey = "warehouse_items_cache_v2";
+  static const String cacheKey = "warehouse_items_cache_v3";
 
-  static const String cacheDateKey = "warehouse_items_cache_date_v2";
+  static const String cacheDateKey = "warehouse_items_cache_date_v3";
+
+  static const String warehouseNamesCacheKey = "warehouse_names_cache_v1";
 
   // ================================================================
   // SEARCH HISTORY
@@ -108,7 +117,21 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
   // ================================================================
 
   Future<void> loadInitialData() async {
+    // ============================================================
+    // LOAD WAREHOUSE NAMES FROM CACHE FIRST
+    // ============================================================
+
+    await loadWarehouseNamesCache();
+
+    // ============================================================
+    // LOAD ITEMS FROM CACHE
+    // ============================================================
+
     await loadCache();
+
+    // ============================================================
+    // LOAD SEARCH HISTORY
+    // ============================================================
 
     await loadSearchHistory();
 
@@ -118,11 +141,22 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       loading = false;
     });
 
-    await refreshFromFirebase();
+    // ============================================================
+    // IMPORTANT
+    //
+    // Firebase is called ONLY if item cache is empty.
+    //
+    // If cache exists:
+    // show items immediately.
+    // ============================================================
+
+    if (allItems.isEmpty) {
+      await refreshFromFirebase();
+    }
   }
 
   // ================================================================
-  // CACHE
+  // LOAD ITEMS CACHE
   // ================================================================
 
   Future<void> loadCache() async {
@@ -154,7 +188,8 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       setState(() {
         allItems = loaded;
 
-        results = List<Map<String, dynamic>>.from(loaded);
+        // Show all cached active items immediately.
+        results = filterItems("");
       });
 
       debugPrint("WAREHOUSE CACHE LOADED = ${loaded.length}");
@@ -163,6 +198,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
     }
   }
 
+  // ================================================================
+  // SAVE ITEMS CACHE
+  // ================================================================
+
   Future<void> saveCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -170,8 +209,110 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       await prefs.setString(cacheKey, jsonEncode(allItems));
 
       await prefs.setString(cacheDateKey, DateTime.now().toIso8601String());
+
+      debugPrint("WAREHOUSE ITEMS CACHE SAVED = ${allItems.length}");
     } catch (e) {
       debugPrint("ERROR SAVING WAREHOUSE CACHE: $e");
+    }
+  }
+
+  // ================================================================
+  // LOAD WAREHOUSE NAMES FROM CACHE
+  // ================================================================
+
+  Future<void> loadWarehouseNamesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final cached = prefs.getString(warehouseNamesCacheKey);
+
+      if (cached == null || cached.trim().isEmpty) {
+        return;
+      }
+
+      final decoded = jsonDecode(cached);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      warehouseNames.clear();
+
+      decoded.forEach((key, value) {
+        final id = key.toString().trim();
+
+        final name = value?.toString().trim() ?? "";
+
+        if (id.isNotEmpty && name.isNotEmpty) {
+          warehouseNames[id] = name;
+        }
+      });
+
+      debugPrint("WAREHOUSE NAMES CACHE LOADED = $warehouseNames");
+    } catch (e) {
+      debugPrint("ERROR LOADING WAREHOUSE NAMES CACHE: $e");
+    }
+  }
+
+  // ================================================================
+  // SAVE WAREHOUSE NAMES CACHE
+  // ================================================================
+
+  Future<void> saveWarehouseNamesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(warehouseNamesCacheKey, jsonEncode(warehouseNames));
+
+      debugPrint("WAREHOUSE NAMES CACHE SAVED = $warehouseNames");
+    } catch (e) {
+      debugPrint("ERROR SAVING WAREHOUSE NAMES CACHE: $e");
+    }
+  }
+
+  // ================================================================
+  // LOAD WAREHOUSE NAMES FROM FIREBASE
+  //
+  // stores
+  //   STORE001
+  //      name: مخزن المرتفعة
+  // ================================================================
+
+  Future<void> loadWarehouseNames() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("stores")
+          .get();
+
+      final Map<String, String> loadedNames = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        final id = doc.id.trim();
+
+        final name = data["name"]?.toString().trim() ?? "";
+
+        if (id.isEmpty) {
+          continue;
+        }
+
+        loadedNames[id] = name.isNotEmpty ? name : id;
+      }
+
+      warehouseNames.clear();
+
+      warehouseNames.addAll(loadedNames);
+
+      // ============================================================
+      // SAVE NAMES FOR NEXT OPEN
+      // ============================================================
+
+      await saveWarehouseNamesCache();
+
+      debugPrint("WAREHOUSE NAMES FIREBASE = $warehouseNames");
+    } catch (e) {
+      debugPrint("ERROR LOADING WAREHOUSE NAMES: $e");
     }
   }
 
@@ -189,6 +330,16 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
     }
 
     try {
+      // ============================================================
+      // LOAD WAREHOUSE NAMES FIRST
+      // ============================================================
+
+      await loadWarehouseNames();
+
+      // ============================================================
+      // LOAD INVENTORY
+      // ============================================================
+
       final snapshot = await FirebaseFirestore.instance
           .collectionGroup("inventory")
           .get();
@@ -199,11 +350,19 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
         try {
           final data = Map<String, dynamic>.from(doc.data());
 
+          // ========================================================
+          // STORE REFERENCE
+          // ========================================================
+
           final storeReference = doc.reference.parent.parent;
 
           if (storeReference == null) {
             continue;
           }
+
+          // ========================================================
+          // STORE ID
+          // ========================================================
 
           final storeId = storeReference.id.trim();
 
@@ -211,28 +370,81 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
             continue;
           }
 
+          // ========================================================
+          // WAREHOUSE NAME
+          // ========================================================
+
+          final warehouseName = warehouseNames[storeId] ?? storeId;
+
+          // ========================================================
+          // ITEM NAME
+          // ========================================================
+
           final name = data["name"]?.toString().trim() ?? "";
 
           if (name.isEmpty) {
             continue;
           }
 
+          // ========================================================
+          // PRICE
+          // ========================================================
+
           final price = parsePrice(data["price"]);
 
-          final active =
-              data["active"] == true ||
-                  data["isActive"] == true ||
-                  data["active"]?.toString().toLowerCase() == "true";
+          // ========================================================
+          // ACTIVE
+          // ========================================================
+
+          bool active = true;
+
+          if (data.containsKey("active")) {
+            final value = data["active"];
+
+            if (value is bool) {
+              active = value;
+            } else {
+              active = value?.toString().toLowerCase() != "false";
+            }
+          } else if (data.containsKey("isActive")) {
+            final value = data["isActive"];
+
+            if (value is bool) {
+              active = value;
+            } else {
+              active = value?.toString().toLowerCase() != "false";
+            }
+          }
+
+          // ========================================================
+          // ADD ITEM
+          // ========================================================
 
           loaded.add({
-            "itemId": doc.id,
-            "name": name,
-            "price": price,
-            "storeId": storeId,
-            "path": doc.reference.path,
-            "active": active,
             ...data,
+
+            "itemId": doc.id,
+
+            "name": name,
+
+            "price": price,
+
+            "storeId": storeId,
+
+            "path": doc.reference.path,
+
+            "active": active,
+
+            // IMPORTANT
+            // Warehouse name is saved INSIDE every item.
+            "warehouseName": warehouseName,
           });
+
+          debugPrint(
+            "ITEM: $name | "
+            "STORE ID: $storeId | "
+            "WAREHOUSE: $warehouseName",
+          );
         } catch (e) {
           debugPrint("ERROR PARSING INVENTORY DOC: $e");
         }
@@ -246,11 +458,21 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
         results = filterItems(controller.text);
       });
 
+      // ============================================================
+      // SAVE EVERYTHING TO CACHE
+      // ============================================================
+
       await saveCache();
 
+      await saveWarehouseNamesCache();
+
       debugPrint("WAREHOUSE FIREBASE ITEMS = ${loaded.length}");
-    } catch (e) {
+
+      debugPrint("WAREHOUSE NAMES = $warehouseNames");
+    } catch (e, stackTrace) {
       debugPrint("ERROR REFRESHING WAREHOUSE: $e");
+
+      debugPrint(stackTrace.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -305,9 +527,17 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
     final activeItems = allItems.where(isItemActive).toList();
 
+    // ============================================================
+    // EMPTY SEARCH = ALL ITEMS
+    // ============================================================
+
     if (normalizedQuery.isEmpty) {
       return List<Map<String, dynamic>>.from(activeItems);
     }
+
+    // ============================================================
+    // SEARCH
+    // ============================================================
 
     return activeItems.where((item) {
       final name = normalizeSearch(item["name"]?.toString() ?? "");
@@ -320,10 +550,15 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
         item["registration"]?.toString() ?? "",
       );
 
+      final warehouseName = normalizeSearch(
+        item["warehouseName"]?.toString() ?? "",
+      );
+
       return name.contains(normalizedQuery) ||
           itemId.contains(normalizedQuery) ||
           storeId.contains(normalizedQuery) ||
-          registration.contains(normalizedQuery);
+          registration.contains(normalizedQuery) ||
+          warehouseName.contains(normalizedQuery);
     }).toList();
   }
 
@@ -340,7 +575,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       if (!mounted) return;
 
       setState(() {
-        results = [];
+        results = filterItems("");
       });
 
       return;
@@ -410,7 +645,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
   Future<void> saveSearchHistory(String query) async {
     final normalized = query.trim();
 
-    if (normalized.isEmpty) return;
+    if (normalized.isEmpty) {
+      return;
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -418,7 +655,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       final current = prefs.getStringList(historyKey) ?? <String>[];
 
       current.removeWhere(
-            (item) => item.toLowerCase().trim() == normalized.toLowerCase().trim(),
+        (item) => item.toLowerCase().trim() == normalized.toLowerCase().trim(),
       );
 
       current.insert(0, normalized);
@@ -524,8 +761,39 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
   // ================================================================
 
   String getWarehouseName(Map<String, dynamic> item) {
+    // ============================================================
+    // FIRST: warehouseName saved in item
+    // ============================================================
+
+    final warehouseName = item["warehouseName"]?.toString().trim() ?? "";
+
+    if (warehouseName.isNotEmpty) {
+      return warehouseName;
+    }
+
+    // ============================================================
+    // STORE ID
+    // ============================================================
+
+    final storeId = item["storeId"]?.toString().trim() ?? "";
+
+    // ============================================================
+    // USE WAREHOUSE NAMES CACHE
+    // ============================================================
+
+    if (storeId.isNotEmpty) {
+      final cachedName = warehouseNames[storeId]?.trim() ?? "";
+
+      if (cachedName.isNotEmpty) {
+        return cachedName;
+      }
+    }
+
+    // ============================================================
+    // OTHER POSSIBLE FIELDS
+    // ============================================================
+
     final possibleKeys = [
-      "warehouseName",
       "storeName",
       "warehouse",
       "store",
@@ -549,10 +817,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
         final name =
             map["name"]?.toString() ??
-                map["title"]?.toString() ??
-                map["storeName"]?.toString() ??
-                map["warehouseName"]?.toString() ??
-                "";
+            map["title"]?.toString() ??
+            map["storeName"]?.toString() ??
+            map["warehouseName"]?.toString() ??
+            "";
 
         if (name.trim().isNotEmpty) {
           return name.trim();
@@ -560,7 +828,11 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
       }
     }
 
-    return item["storeId"]?.toString().trim() ?? "";
+    // ============================================================
+    // FINAL FALLBACK
+    // ============================================================
+
+    return storeId;
   }
 
   // ================================================================
@@ -606,10 +878,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
         final text =
             map["text"]?.toString() ??
-                map["title"]?.toString() ??
-                map["description"]?.toString() ??
-                map["name"]?.toString() ??
-                "";
+            map["title"]?.toString() ??
+            map["description"]?.toString() ??
+            map["name"]?.toString() ??
+            "";
 
         if (text.trim().isNotEmpty) {
           return text.trim();
@@ -638,10 +910,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
           final text =
               map["text"]?.toString() ??
-                  map["title"]?.toString() ??
-                  map["description"]?.toString() ??
-                  map["name"]?.toString() ??
-                  "";
+              map["title"]?.toString() ??
+              map["description"]?.toString() ??
+              map["name"]?.toString() ??
+              "";
 
           if (text.trim().isNotEmpty) {
             return text.trim();
@@ -751,9 +1023,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
         }
       }
 
-      // ==========================================================
+      // ============================================================
       // FIND SAME ITEM + SAME WAREHOUSE
-      // ==========================================================
+      // ============================================================
 
       int existingIndex = -1;
 
@@ -772,9 +1044,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
       final offer = getOfferText(item);
 
-      // ==========================================================
+      // ============================================================
       // UPDATE EXISTING ITEM
-      // ==========================================================
+      // ============================================================
 
       if (existingIndex >= 0) {
         orderItems[existingIndex]["qty"] = quantity;
@@ -789,17 +1061,20 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
           orderItems[existingIndex]["offer"] = offer;
         }
       }
-      // ==========================================================
+      // ============================================================
       // ADD NEW ITEM
-      // ==========================================================
+      // ============================================================
       else {
         orderItems.add({
           "item": name,
 
           "qty": quantity,
 
+          // IMPORTANT:
+          // Store ID remains STORE001
           "warehouse": storeId,
 
+          // Display name
           "warehouseName": warehouseName,
 
           "matchedItem": name,
@@ -838,7 +1113,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
       _showMessage(
         "$name × $quantity = "
-            "${total.toStringAsFixed(3)} OMR",
+        "${total.toStringAsFixed(3)} OMR",
       );
     } catch (e, stackTrace) {
       debugPrint("ERROR ADDING WAREHOUSE ITEM TO ORDER: $e");
@@ -1214,10 +1489,10 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
                                   IconButton(
                                     onPressed: quantity > 1
                                         ? () {
-                                      setSheetState(() {
-                                        quantity--;
-                                      });
-                                    }
+                                            setSheetState(() {
+                                              quantity--;
+                                            });
+                                          }
                                         : null,
                                     icon: const Icon(
                                       Icons.remove_circle_outline,
@@ -1280,7 +1555,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
                           ),
                           label: Text(
                             "ADD $quantity TO ORDER • "
-                                "${totalPrice.toStringAsFixed(3)} OMR",
+                            "${totalPrice.toStringAsFixed(3)} OMR",
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -1336,13 +1611,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
             ),
           ],
         ),
-
         backgroundColor: isError ? omanRed : omanGreen,
-
         behavior: SnackBarBehavior.floating,
-
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-
         margin: const EdgeInsets.all(12),
       ),
     );
@@ -1380,7 +1651,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
     if (!mounted) return;
 
     setState(() {
-      results = [];
+      results = filterItems("");
     });
   }
 
@@ -1450,13 +1721,13 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
             onPressed: refreshing ? null : refreshFromFirebase,
             icon: refreshing
                 ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                color: omanGreen,
-                strokeWidth: 2,
-              ),
-            )
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: omanGreen,
+                      strokeWidth: 2,
+                    ),
+                  )
                 : const Icon(Icons.refresh_rounded, color: omanGreen),
           ),
 
@@ -1475,11 +1746,8 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
           Container(
             width: double.infinity,
-
             color: Colors.white,
-
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-
             child: TextField(
               controller: controller,
 
@@ -1504,9 +1772,9 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
                 suffixIcon: controller.text.isNotEmpty
                     ? IconButton(
-                  icon: const Icon(Icons.clear),
-                  onPressed: clearSearch,
-                )
+                        icon: const Icon(Icons.clear),
+                        onPressed: clearSearch,
+                      )
                     : null,
 
                 filled: true,
@@ -1543,12 +1811,12 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
           // ========================================================
           // CONTENT
+          //
+          // IMPORTANT:
+          // Always show results.
+          // Empty search = all items.
           // ========================================================
-          Expanded(
-            child: controller.text.trim().isEmpty
-                ? buildHistory()
-                : buildResults(),
-          ),
+          Expanded(child: buildResults()),
         ],
       ),
     );
@@ -1595,7 +1863,7 @@ class _WarehouseItemsScreenState extends State<WarehouseItemsScreen> {
 
               Text(
                 "Your recent warehouse searches\n"
-                    "will appear here",
+                "will appear here",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
