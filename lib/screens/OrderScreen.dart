@@ -3,10 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:excel/excel.dart';
+import 'package:excel_plus/excel_plus.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -580,13 +581,15 @@ class _OrderScreenState extends State<OrderScreen> {
   // ============================================================
 
   Future<void> openWarehouseWhatsApp() async {
-    final whatsapp = selectedWarehouse?["whatsapp"]?.toString().trim() ?? "";
+    final whatsapp =
+        selectedWarehouse?["whatsapp"]?.toString().trim() ?? "";
 
     if (whatsapp.isEmpty) {
       _showMessage("WhatsApp number is not available for this warehouse.");
       return;
     }
 
+    // Keep numbers only
     final cleanNumber = whatsapp.replaceAll(RegExp(r"[^0-9]"), "");
 
     if (cleanNumber.isEmpty) {
@@ -594,7 +597,11 @@ class _OrderScreenState extends State<OrderScreen> {
       return;
     }
 
-    final uri = Uri.parse("https://wa.me/$cleanNumber");
+    // International format is required.
+    // Example Oman: 96891234567
+    final uri = Uri.parse(
+      "https://api.whatsapp.com/send?phone=$cleanNumber",
+    );
 
     try {
       final launched = await launchUrl(
@@ -608,7 +615,7 @@ class _OrderScreenState extends State<OrderScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      _showMessage("Could not open WhatsApp: $e");
+      _showMessage("Could not open WhatsApp.");
     }
   }
 
@@ -834,7 +841,27 @@ class _OrderScreenState extends State<OrderScreen> {
 
     return table.rows.map((row) {
       return row.map((cell) {
-        return cell?.value.toString().trim() ?? "";
+        final value = cell?.value;
+
+        if (value == null) {
+          return "";
+        }
+
+        final result = switch (value) {
+          TextCellValue() => value.value.text,
+          IntCellValue() => value.value.toString(),
+          DoubleCellValue() => value.value.toString(),
+          BoolCellValue() => value.value.toString(),
+          FormulaCellValue() => value.formula,
+          DateCellValue() => value.asDateTimeLocal().toString(),
+          TimeCellValue() => value.asDuration().toString(),
+          DateTimeCellValue() => value.asDateTimeLocal().toString(),
+
+        // Handle Excel error cells
+          CellErrorValue() => "",
+        };
+
+        return result ?? "";
       }).toList();
     }).toList();
   }
@@ -2353,11 +2380,7 @@ class _OrderScreenState extends State<OrderScreen> {
         _appendExcelRow(drugDetailsSheet, [
           "Item",
           "Qty",
-          "Matched Item",
-          "Match %",
-          "Purchase Price",
           "Sale Price",
-          "Offers",
           "Total",
         ]);
 
@@ -2370,15 +2393,7 @@ class _OrderScreenState extends State<OrderScreen> {
             continue;
           }
 
-          final matchedItem = item["matchedItem"]?.toString().trim() ?? "";
-
-          final matchPercent = _toDouble(item["matchPercent"]);
-
-          final purchase = _toDouble(item["purchase"]);
-
           final sale = _toDouble(item["sale"]);
-
-          final offer = item["offer"]?.toString().trim() ?? "";
 
           final total = sale * qty;
 
@@ -2387,11 +2402,7 @@ class _OrderScreenState extends State<OrderScreen> {
           _appendExcelRow(drugDetailsSheet, [
             name,
             qty.toString(),
-            matchedItem,
-            matchPercent > 0 ? "${matchPercent.toStringAsFixed(0)}%" : "",
-            purchase.toStringAsFixed(3),
             sale.toStringAsFixed(3),
-            offer,
             total.toStringAsFixed(3),
           ]);
 
@@ -2400,7 +2411,7 @@ class _OrderScreenState extends State<OrderScreen> {
           if (mounted) {
             setState(() {
               statusText =
-                  "Processing Drug Details "
+              "Processing Drug Details "
                   "$processedDrugDetails / "
                   "${drugDetailsForWarehouse.length}...";
             });
@@ -2410,15 +2421,10 @@ class _OrderScreenState extends State<OrderScreen> {
         _appendExcelRow(drugDetailsSheet, [
           "",
           "",
-          "",
-          "",
-          "",
-          "",
           "TOTAL",
           drugDetailsTotal.toStringAsFixed(3),
         ]);
       }
-
       // ========================================================
       // ENCODE
       // ========================================================

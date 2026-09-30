@@ -28,10 +28,6 @@ class MainMenuScreen extends StatefulWidget {
 
 class _MainMenuScreenState extends State<MainMenuScreen>
     with SingleTickerProviderStateMixin {
-  // ================================================================
-  // OMAN COLORS
-  // ================================================================
-
   static const Color omanRed = Color(0xffC8102E);
   static const Color omanGreen = Color(0xff009A44);
   static const Color omanWhite = Colors.white;
@@ -57,16 +53,15 @@ class _MainMenuScreenState extends State<MainMenuScreen>
       curve: Curves.easeOut,
     );
 
-    _slideAnimation =
-        Tween<Offset>(
-          begin: const Offset(0, 0.06),
-          end: Offset.zero,
-        ).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -81,9 +76,49 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     super.dispose();
   }
 
-  // ================================================================
+  // ============================================================
+  // EXPIRE DATE
+  // ============================================================
+
+  String _formatExpireDate() {
+    final date = widget.expireDate?.toDate();
+
+    if (date == null) {
+      return "No expiry date";
+    }
+
+    return "${date.day.toString().padLeft(2, '0')}/"
+        "${date.month.toString().padLeft(2, '0')}/"
+        "${date.year}";
+  }
+
+  int? _remainingDays() {
+    final date = widget.expireDate?.toDate();
+
+    if (date == null) {
+      return null;
+    }
+
+    final now = DateTime.now();
+
+    final today = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+
+    final expiry = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    );
+
+    return expiry.difference(today).inDays;
+  }
+
+  // ============================================================
   // LOGOUT
-  // ================================================================
+  // ============================================================
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
@@ -99,25 +134,32 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
   // PAGE TRANSITION
-  // ================================================================
+  // ============================================================
 
   PageRouteBuilder _buildPageRoute(Widget page) {
     return PageRouteBuilder(
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return page;
-      },
+      pageBuilder: (
+          context,
+          animation,
+          secondaryAnimation,
+          ) =>
+      page,
       transitionDuration: const Duration(milliseconds: 450),
       reverseTransitionDuration: const Duration(milliseconds: 300),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      transitionsBuilder: (
+          context,
+          animation,
+          secondaryAnimation,
+          child,
+          ) {
         final fadeAnimation = CurvedAnimation(
           parent: animation,
           curve: Curves.easeOut,
         );
 
-        final slideAnimation =
-        Tween<Offset>(
+        final slideAnimation = Tween<Offset>(
           begin: const Offset(0.035, 0),
           end: Offset.zero,
         ).animate(
@@ -138,9 +180,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
   // BUILD
-  // ================================================================
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -152,6 +194,13 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         child: Column(
           children: [
             _buildTopBar(),
+
+            // ==================================================
+            // EXPIRE DATE تحت الـ TOP BAR
+            // ==================================================
+
+            _buildExpireDateBar(),
+
             Expanded(
               child: _buildBody(isStore),
             ),
@@ -161,9 +210,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
   // TOP BAR
-  // ================================================================
+  // ============================================================
 
   Widget _buildTopBar() {
     return Container(
@@ -185,10 +234,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Row(
                 children: [
-                  // ==================================================
-                  // LOGO
-                  // ==================================================
-
                   Container(
                     width: 44,
                     height: 44,
@@ -208,10 +253,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
 
                   const SizedBox(width: 12),
 
-                  // ==================================================
-                  // BRAND
-                  // ==================================================
-
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,9 +266,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                           letterSpacing: -0.4,
                         ),
                       ),
-
                       const SizedBox(height: 1),
-
                       Row(
                         children: [
                           Container(
@@ -238,9 +277,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                               shape: BoxShape.circle,
                             ),
                           ),
-
                           const SizedBox(width: 4),
-
                           const Text(
                             "OMAN",
                             style: TextStyle(
@@ -256,10 +293,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                   ),
 
                   const Spacer(),
-
-                  // ==================================================
-                  // USER INFO
-                  // ==================================================
 
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -306,10 +339,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
 
                   const SizedBox(width: 10),
 
-                  // ==================================================
-                  // LOGOUT
-                  // ==================================================
-
                   Tooltip(
                     message: "Logout",
                     child: Material(
@@ -345,9 +374,120 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
+  // EXPIRE DATE BAR
+  // ============================================================
+
+  Widget _buildExpireDateBar() {
+    final days = _remainingDays();
+
+    final bool isExpired = days != null && days < 0;
+    final bool isExpiringSoon = days != null && days >= 0 && days <= 7;
+
+    Color borderColor;
+
+    if (isExpired) {
+      borderColor = omanRed.withOpacity(0.25);
+    } else if (isExpiringSoon) {
+      borderColor = Colors.orange.withOpacity(0.30);
+    } else {
+      borderColor = omanGreen.withOpacity(0.15);
+    }
+
+    Color iconBackground;
+
+    if (isExpired) {
+      iconBackground = omanRed.withOpacity(0.10);
+    } else if (isExpiringSoon) {
+      iconBackground = Colors.orange.withOpacity(0.10);
+    } else {
+      iconBackground = omanGreen.withOpacity(0.10);
+    }
+
+    Color iconColor;
+
+    if (isExpired) {
+      iconColor = omanRed;
+    } else if (isExpiringSoon) {
+      iconColor = Colors.orange.shade700;
+    } else {
+      iconColor = omanGreen;
+    }
+
+    String statusText;
+
+    if (days == null) {
+      statusText = "Expire Date: No expiry date";
+    } else if (days < 0) {
+      statusText = "Subscription expired • ${_formatExpireDate()}";
+    } else if (days == 0) {
+      statusText = "Expires today • ${_formatExpireDate()}";
+    } else {
+      statusText =
+      "Expire Date: ${_formatExpireDate()} • $days days remaining";
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(30, 14, 30, 0),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 11,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: borderColor,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: iconBackground,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.event_outlined,
+              color: iconColor,
+              size: 18,
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: Text(
+              statusText,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isExpired
+                    ? omanRed
+                    : isExpiringSoon
+                    ? Colors.orange.shade800
+                    : const Color(0xff3c4658),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // BODY
-  // ================================================================
+  // ============================================================
 
   Widget _buildBody(bool isStore) {
     return SingleChildScrollView(
@@ -375,9 +515,9 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
   // WELCOME
-  // ================================================================
+  // ============================================================
 
   Widget _buildWelcomeSection(bool isStore) {
     final title = isStore
@@ -395,10 +535,6 @@ class _MainMenuScreenState extends State<MainMenuScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ========================================================
-            // OMAN LINE
-            // ========================================================
-
             Row(
               children: [
                 Container(
@@ -409,9 +545,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),
-
                 const SizedBox(width: 4),
-
                 Container(
                   width: 24,
                   height: 4,
@@ -423,9 +557,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
                     ),
                   ),
                 ),
-
                 const SizedBox(width: 4),
-
                 Container(
                   width: 24,
                   height: 4,
@@ -465,30 +597,40 @@ class _MainMenuScreenState extends State<MainMenuScreen>
     );
   }
 
-  // ================================================================
+  // ============================================================
   // MENU GRID
-  // ================================================================
+  // ============================================================
 
   Widget _buildMenuGrid(bool isStore) {
-    final cards = <Widget>[];
+    if (isStore) {
+      return Wrap(
+        spacing: 18,
+        runSpacing: 18,
+        children: [
+          MenuCard(
+            icon: Icons.inventory_2_outlined,
+            title: "Inventory",
+            subtitle: "Manage warehouse inventory",
+            color: omanGreen,
+            onTap: () {
+              _showModernMessage(
+                "Inventory screen coming soon",
+              );
+            },
+          ),
+        ],
+      );
+    }
 
-    // ==============================================================
-    // PHARMACY
-    // ==============================================================
-
-    if (!isStore) {
-      // ------------------------------------------------------------
-      // GENERATE ORDER
-      // ------------------------------------------------------------
-
-      cards.add(
+    return Wrap(
+      spacing: 18,
+      runSpacing: 18,
+      children: [
         MenuCard(
+          icon: Icons.receipt_long_outlined,
           title: "Generate Order",
-          description: "Create pharmacy order Excel file",
-          icon: Icons.inventory_2_outlined,
-          color: omanRed,
-          index: 0,
-          animation: _animationController,
+          subtitle: "Create a new pharmacy order",
+          color: omanGreen,
           onTap: () {
             Navigator.push(
               context,
@@ -501,20 +643,12 @@ class _MainMenuScreenState extends State<MainMenuScreen>
             );
           },
         ),
-      );
 
-      // ------------------------------------------------------------
-      // DRUG EYE
-      // ------------------------------------------------------------
-
-      cards.add(
         MenuCard(
+          icon: Icons.search_rounded,
           title: "Drug Eye",
-          description: "Search drug information",
-          icon: Icons.medication_outlined,
-          color: omanGreen,
-          index: 1,
-          animation: _animationController,
+          subtitle: "Search drug information",
+          color: const Color(0xff3F51B5),
           onTap: () {
             Navigator.push(
               context,
@@ -524,20 +658,12 @@ class _MainMenuScreenState extends State<MainMenuScreen>
             );
           },
         ),
-      );
 
-      // ------------------------------------------------------------
-      // WAREHOUSE ITEMS
-      // ------------------------------------------------------------
-
-      cards.add(
         MenuCard(
+          icon: Icons.inventory_2_outlined,
           title: "Warehouse Items",
-          description: "Search warehouse items and prices",
-          icon: Icons.warehouse_outlined,
-          color: omanRed,
-          index: 2,
-          animation: _animationController,
+          subtitle: "View warehouse stock",
+          color: const Color(0xff00897B),
           onTap: () {
             Navigator.push(
               context,
@@ -549,21 +675,13 @@ class _MainMenuScreenState extends State<MainMenuScreen>
             );
           },
         ),
-      );
 
-      // ------------------------------------------------------------
-      // UPDATE PRICES
-      // ------------------------------------------------------------
-
-      if (false) {
-        cards.add(
+        if (false) ...[
           MenuCard(
-            title: "Update Prices",
-            description: "Update drug prices from Excel",
             icon: Icons.price_change_outlined,
-            color: omanGreen,
-            index: 3,
-            animation: _animationController,
+            title: "Update Prices",
+            subtitle: "Update medicine prices",
+            color: const Color(0xff8E44AD),
             onTap: () {
               Navigator.push(
                 context,
@@ -573,162 +691,101 @@ class _MainMenuScreenState extends State<MainMenuScreen>
               );
             },
           ),
-        );
-      }
-
-      // ------------------------------------------------------------
-      // MINISTRY OF HEALTH LIST
-      // ------------------------------------------------------------
-
-      // الكارت القديم يفضل موجود كمرجع لو احتجته لاحقاً.
-      //
-      // cards.add(
-      //   MenuCard(
-      //     title: "Ministry List",
-      //     description: "Upload Ministry of Health drug list",
-      //     icon: Icons.upload_file_rounded,
-      //     color: const Color(0xff7b61ff),
-      //     index: 4,
-      //     animation: _animationController,
-      //     onTap: () {
-      //       Navigator.push(
-      //         context,
-      //         _buildPageRoute(
-      //           const ImportDrugScreen(),
-      //         ),
-      //       );
-      //     },
-      //   ),
-      // );
-    }
-
-    // ==============================================================
-    // STORE
-    // ==============================================================
-
-    if (isStore) {
-      cards.add(
-        MenuCard(
-          title: "Inventory",
-          description: "Manage warehouse stock",
-          icon: Icons.warehouse_outlined,
-          color: omanGreen,
-          index: 0,
-          animation: _animationController,
-          onTap: () {
-            _showModernMessage(
-              "Inventory screen coming soon",
-            );
-          },
-        ),
-      );
-    }
-
-    return Wrap(
-      spacing: 20,
-      runSpacing: 20,
-      children: cards,
+        ],
+      ],
     );
   }
 
-  // ================================================================
-  // MODERN MESSAGE
-  // ================================================================
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void _showModernMessage(String message) {
-    if (!mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-
-    messenger.hideCurrentSnackBar();
-
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        margin: const EdgeInsets.fromLTRB(
-          24,
-          0,
-          24,
-          24,
-        ),
-        padding: EdgeInsets.zero,
-        duration: const Duration(seconds: 3),
-        content: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 13,
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          duration: const Duration(seconds: 2),
+          padding: EdgeInsets.zero,
+          margin: const EdgeInsets.fromLTRB(
+            24,
+            0,
+            24,
+            24,
           ),
-          decoration: BoxDecoration(
-            color: const Color(0xff20242b),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: omanGreen.withOpacity(0.15),
-                  shape: BoxShape.circle,
+          content: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 13,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xff20242b),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
                 ),
-                child: const Icon(
-                  Icons.info_outline_rounded,
-                  color: Colors.white70,
-                  size: 19,
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: omanGreen.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.info_outline_rounded,
+                    color: omanGreen,
+                    size: 19,
                   ),
                 ),
-              ),
-            ],
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
-// ====================================================================
+// ================================================================
 // MENU CARD
-// ====================================================================
+// ================================================================
 
 class MenuCard extends StatefulWidget {
-  final String title;
-  final String description;
   final IconData icon;
+  final String title;
+  final String subtitle;
   final Color color;
   final VoidCallback onTap;
-  final int index;
-  final Animation<double> animation;
 
   const MenuCard({
     super.key,
-    required this.title,
-    required this.description,
     required this.icon,
+    required this.title,
+    required this.subtitle,
     required this.color,
     required this.onTap,
-    required this.index,
-    required this.animation,
   });
 
   @override
@@ -736,186 +793,112 @@ class MenuCard extends StatefulWidget {
 }
 
 class _MenuCardState extends State<MenuCard> {
-  bool isHovered = false;
+  bool isHovering = false;
 
   @override
   Widget build(BuildContext context) {
-    final start = 0.15 + (widget.index * 0.12);
-
-    final safeStart = start.clamp(0.0, 0.75).toDouble();
-
-    final cardAnimation = CurvedAnimation(
-      parent: widget.animation,
-      curve: Interval(
-        safeStart,
-        1.0,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    return FadeTransition(
-      opacity: cardAnimation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.08),
-          end: Offset.zero,
-        ).animate(cardAnimation),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-
-          onEnter: (_) {
-            if (!mounted) return;
-
-            setState(() {
-              isHovered = true;
-            });
-          },
-
-          onExit: (_) {
-            if (!mounted) return;
-
-            setState(() {
-              isHovered = false;
-            });
-          },
-
-          child: GestureDetector(
-            onTap: widget.onTap,
-
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-
-              width: 300,
-              height: 150,
-
-              transform: Matrix4.translationValues(
-                0,
-                isHovered ? -4 : 0,
-                0,
-              ),
-
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-
-                border: Border.all(
-                  color: isHovered
-                      ? widget.color.withOpacity(0.22)
-                      : Colors.grey.shade200,
-                ),
-
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(
-                      isHovered ? 0.10 : 0.045,
-                    ),
-                    blurRadius: isHovered ? 22 : 12,
-                    offset: Offset(
-                      0,
-                      isHovered ? 10 : 5,
-                    ),
-                  ),
-                ],
-              ),
-
-              padding: const EdgeInsets.all(20),
-
-              child: Row(
-                children: [
-                  // ==================================================
-                  // ICON
-                  // ==================================================
-
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-
-                    width: 58,
-                    height: 58,
-
-                    decoration: BoxDecoration(
-                      color: widget.color.withOpacity(
-                        isHovered ? 0.15 : 0.09,
-                      ),
-                      borderRadius: BorderRadius.circular(17),
-                    ),
-
-                    child: Icon(
-                      widget.icon,
-                      size: 29,
-                      color: widget.color,
-                    ),
-                  ),
-
-                  const SizedBox(width: 16),
-
-                  // ==================================================
-                  // TEXT
-                  // ==================================================
-
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment:
-                      MainAxisAlignment.center,
-                      crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        Text(
-                          widget.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.35,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // ==================================================
-                  // ARROW
-                  // ==================================================
-
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-
-                    width: 32,
-                    height: 32,
-
-                    decoration: BoxDecoration(
-                      color: isHovered
-                          ? widget.color.withOpacity(0.10)
-                          : Colors.transparent,
-                      shape: BoxShape.circle,
-                    ),
-
-                    child: Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 13,
-                      color: isHovered
-                          ? widget.color
-                          : Colors.grey.shade400,
-                    ),
-                  ),
-                ],
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() {
+          isHovering = true;
+        });
+      },
+      onExit: (_) {
+        setState(() {
+          isHovering = false;
+        });
+      },
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          width: 300,
+          height: 150,
+          transform: Matrix4.identity()
+            ..translate(
+              0.0,
+              isHovering ? -4.0 : 0.0,
+            ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: widget.color.withOpacity(
+                isHovering ? 0.22 : 0.10,
               ),
             ),
+            boxShadow: [
+              BoxShadow(
+                color: widget.color.withOpacity(
+                  isHovering ? 0.12 : 0.055,
+                ),
+                blurRadius: isHovering ? 22 : 14,
+                offset: Offset(
+                  0,
+                  isHovering ? 10 : 6,
+                ),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(22),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: widget.color.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(
+                  widget.icon,
+                  color: widget.color,
+                  size: 25,
+                ),
+              ),
+
+              const SizedBox(width: 16),
+
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xff172033),
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      widget.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: widget.color.withOpacity(0.65),
+              ),
+            ],
           ),
         ),
       ),

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:excel/excel.dart';
+import 'package:excel_plus/excel_plus.dart';
 
 class DrugImportService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
