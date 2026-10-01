@@ -2,7 +2,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:stockgap2026/screens/store_inventory_screen.dart';
 
-import 'OrderScreen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'main_menu_screen.dart';
@@ -66,7 +65,10 @@ class _HomescreenState extends State<Homescreen>
         );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
       _animationController.forward();
+
       checkLogin();
     });
   }
@@ -498,10 +500,6 @@ class _HomescreenState extends State<Homescreen>
       final username = codeController.text.trim();
       final password = passwordController.text.trim();
 
-      // ============================================================
-      // VALIDATION
-      // ============================================================
-
       if (username.isEmpty || password.isEmpty) {
         _stopLoading();
 
@@ -527,7 +525,7 @@ class _HomescreenState extends State<Homescreen>
       bool isStore = false;
 
       // ============================================================
-      // 2. IF NOT FOUND -> SEARCH STORES
+      // 2. SEARCH STORES
       // ============================================================
 
       if (result.docs.isEmpty) {
@@ -552,26 +550,10 @@ class _HomescreenState extends State<Homescreen>
         return;
       }
 
-      // ============================================================
-      // DOCUMENT
-      // ============================================================
-
       final doc = result.docs.first;
-
       final data = doc.data();
-
       final docRef = doc.reference;
-
       final firestoreDocumentId = doc.id.trim();
-
-      debugPrint("=================================");
-      debugPrint("LOGIN SUCCESS");
-      debugPrint("COLLECTION: ${doc.reference.parent.id}");
-      debugPrint("DOCUMENT ID: $firestoreDocumentId");
-      debugPrint("USERNAME: $username");
-      debugPrint("DATA: $data");
-      debugPrint("IS STORE: $isStore");
-      debugPrint("=================================");
 
       // ============================================================
       // PASSWORD
@@ -619,13 +601,7 @@ class _HomescreenState extends State<Homescreen>
 
       final prefs = await SharedPreferences.getInstance();
 
-      String deviceId = prefs.getString("deviceId") ?? "";
-
-      if (deviceId.isEmpty) {
-        deviceId = DateTime.now().microsecondsSinceEpoch.toString();
-
-        await prefs.setString("deviceId", deviceId);
-      }
+      final deviceId = await getDeviceId();
 
       // ============================================================
       // READ DEVICES
@@ -647,47 +623,29 @@ class _HomescreenState extends State<Homescreen>
           .toList();
 
       // ============================================================
-      // CHECK CURRENT DEVICE
-      // ============================================================
-
-      final exists = devices.any((d) => d["deviceId"] == deviceId);
-
-      // ============================================================
       // MAX DEVICES
       // ============================================================
 
-      final maxDevicesValue = data["maxDevices"];
-
-      int maxDevices = 1;
-
-      if (maxDevicesValue is int) {
-        maxDevices = maxDevicesValue;
-      } else if (maxDevicesValue is num) {
-        maxDevices = maxDevicesValue.toInt();
-      } else if (maxDevicesValue is String) {
-        maxDevices = int.tryParse(maxDevicesValue) ?? 1;
-      }
+      final maxDevices = _parseMaxDevices(data["maxDevices"]);
 
       // ============================================================
-      // REGISTER NEW DEVICE
+      // REGISTER DEVICE
       // ============================================================
 
-      if (!exists) {
-        if (devices.length >= maxDevices) {
-          _stopLoading();
+      final registered = await registerDevice(
+        deviceId: deviceId,
+        deviceName: "Flutter Windows",
+        devices: devices,
+        maxDevices: maxDevices,
+        docRef: docRef,
+      );
 
-          _showMessage("Too many devices logged in", isError: true);
+      if (!registered) {
+        _stopLoading();
 
-          return;
-        }
+        _showMessage("Too many devices logged in", isError: true);
 
-        devices.add({
-          "deviceId": deviceId,
-          "deviceName": "Flutter Windows",
-          "loginTime": DateTime.now().toIso8601String(),
-        });
-
-        await docRef.update({"devices": devices});
+        return;
       }
 
       // ============================================================
@@ -701,25 +659,6 @@ class _HomescreenState extends State<Homescreen>
       // ============================================================
 
       String storeCode = firestoreDocumentId;
-
-      /*
-       * IMPORTANT:
-       *
-       * If this is a pharmacy user and the users document
-       * contains a "storeCode" field, use that field.
-       *
-       * Example:
-       *
-       * users
-       *   └── userDocument
-       *        ├── username
-       *        ├── password
-       *        └── storeCode: "ABC123"
-       *
-       * Then warehouse path becomes:
-       *
-       * stores/ABC123/inventory
-       */
 
       if (!isStore) {
         final possibleStoreCode = data["storeCode"];
@@ -739,20 +678,13 @@ class _HomescreenState extends State<Homescreen>
       if (storeCode.isEmpty) {
         _stopLoading();
 
-        debugPrint("=================================");
-        debugPrint("❌ STORE CODE IS EMPTY");
-        debugPrint("USER DOCUMENT ID: $firestoreDocumentId");
-        debugPrint("USERNAME: $username");
-        debugPrint("DATA: $data");
-        debugPrint("=================================");
-
         _showMessage("Store code is missing for this account", isError: true);
 
         return;
       }
 
       // ============================================================
-      // SAVE LOGIN
+      // SAVE LOGIN SESSION
       // ============================================================
 
       await prefs.setString("username", username);
@@ -761,17 +693,12 @@ class _HomescreenState extends State<Homescreen>
 
       await prefs.setString("storeCode", storeCode);
 
-      // ============================================================
-      // DEBUG LOGIN SESSION
-      // ============================================================
-
       debugPrint("=================================");
-      debugPrint("LOGIN SESSION");
+      debugPrint("LOGIN SESSION SAVED");
       debugPrint("USERNAME: $username");
       debugPrint("ROLE: $role");
-      debugPrint("USER DOCUMENT ID: $firestoreDocumentId");
       debugPrint("STORE CODE: $storeCode");
-      debugPrint("WAREHOUSE PATH: stores/$storeCode/inventory");
+      debugPrint("DEVICE ID: $deviceId");
       debugPrint("=================================");
 
       _stopLoading();
@@ -781,15 +708,6 @@ class _HomescreenState extends State<Homescreen>
       // ============================================================
 
       if (isStore || role == "store") {
-        debugPrint("OPENING STORE INVENTORY");
-
-        debugPrint("STORE CODE = $storeCode");
-
-        debugPrint(
-          "INVENTORY PATH = "
-          "stores/$storeCode/inventory",
-        );
-
         if (!mounted) return;
 
         await _showWelcomeScreen(
@@ -807,15 +725,6 @@ class _HomescreenState extends State<Homescreen>
       // PHARMACY
       // ============================================================
 
-      debugPrint("OPENING PHARMACY MENU");
-
-      debugPrint("PHARMACY STORE CODE = $storeCode");
-
-      debugPrint(
-        "WAREHOUSE PATH = "
-        "stores/$storeCode/inventory",
-      );
-
       if (!mounted) return;
 
       await _showWelcomeScreen(
@@ -829,13 +738,329 @@ class _HomescreenState extends State<Homescreen>
       );
     } catch (e, stackTrace) {
       debugPrint("LOGIN ERROR: $e");
-
       debugPrint(stackTrace.toString());
 
       _stopLoading();
 
       _showMessage(e.toString(), isError: true);
     }
+  }
+
+  // ================================================================
+  // AUTO LOGIN
+  // ================================================================
+
+  Future<void> checkLogin() async {
+    if (isCheckingLogin || isLoading) return;
+
+    isCheckingLogin = true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final savedUser = prefs.getString("username");
+
+      debugPrint("=================================");
+      debugPrint("AUTO LOGIN CHECK");
+      debugPrint("SAVED USER: $savedUser");
+      debugPrint("=================================");
+
+      // ============================================================
+      // NO SAVED SESSION
+      // ============================================================
+
+      if (savedUser == null || savedUser.trim().isEmpty) {
+        isCheckingLogin = false;
+        return;
+      }
+
+      final username = savedUser.trim();
+
+      final firestore = FirebaseFirestore.instance;
+
+      QuerySnapshot<Map<String, dynamic>> result;
+
+      // ============================================================
+      // SEARCH USERS
+      // ============================================================
+
+      result = await firestore
+          .collection("users")
+          .where("username", isEqualTo: username)
+          .limit(1)
+          .get(const GetOptions(source: Source.server));
+
+      bool isStore = false;
+
+      // ============================================================
+      // SEARCH STORES
+      // ============================================================
+
+      if (result.docs.isEmpty) {
+        result = await firestore
+            .collection("stores")
+            .where("username", isEqualTo: username)
+            .limit(1)
+            .get(const GetOptions(source: Source.server));
+
+        isStore = true;
+      }
+
+      // ============================================================
+      // ACCOUNT NO LONGER EXISTS
+      // ============================================================
+
+      if (result.docs.isEmpty) {
+        await _clearSavedSession();
+
+        isCheckingLogin = false;
+        return;
+      }
+
+      final doc = result.docs.first;
+
+      final data = doc.data();
+
+      final docRef = doc.reference;
+
+      final firestoreDocumentId = doc.id.trim();
+
+      // ============================================================
+      // ACTIVE
+      // ============================================================
+
+      if (!isStore && data["active"] != true) {
+        await _clearSavedSession();
+
+        isCheckingLogin = false;
+
+        _showMessage("Account disabled", isError: true);
+
+        return;
+      }
+
+      // ============================================================
+      // EXPIRE DATE
+      // ============================================================
+
+      final expireDate = data["expireDate"] is Timestamp
+          ? data["expireDate"] as Timestamp
+          : null;
+
+      if (expireDate != null && DateTime.now().isAfter(expireDate.toDate())) {
+        await _clearSavedSession();
+
+        isCheckingLogin = false;
+
+        _showMessage("Subscription expired", isError: true);
+
+        return;
+      }
+
+      // ============================================================
+      // DEVICE
+      // ============================================================
+
+      final deviceId = await getDeviceId();
+
+      // ============================================================
+      // READ DEVICES
+      // ============================================================
+
+      List devices = [];
+
+      if (data["devices"] is List) {
+        devices = List.from(data["devices"]);
+      }
+
+      // ============================================================
+      // CLEAN DEVICES
+      // ============================================================
+
+      devices = devices
+          .where((d) => d is Map)
+          .map((d) => Map<String, dynamic>.from(d))
+          .toList();
+
+      // ============================================================
+      // MAX DEVICES
+      // ============================================================
+
+      final maxDevices = _parseMaxDevices(data["maxDevices"]);
+
+      // ============================================================
+      // CHECK / REGISTER DEVICE
+      // ============================================================
+
+      final registered = await registerDevice(
+        deviceId: deviceId,
+        deviceName: "Flutter Windows",
+        devices: devices,
+        maxDevices: maxDevices,
+        docRef: docRef,
+      );
+
+      if (!registered) {
+        await _clearSavedSession();
+
+        isCheckingLogin = false;
+
+        _showMessage("This device is not authorized", isError: true);
+
+        return;
+      }
+
+      // ============================================================
+      // ROLE
+      // ============================================================
+
+      final role = data["role"] ?? (isStore ? "store" : "pharmacy");
+
+      // ============================================================
+      // STORE CODE
+      // ============================================================
+
+      String storeCode = firestoreDocumentId;
+
+      if (!isStore) {
+        final possibleStoreCode = data["storeCode"];
+
+        if (possibleStoreCode != null &&
+            possibleStoreCode.toString().trim().isNotEmpty) {
+          storeCode = possibleStoreCode.toString().trim();
+        }
+      }
+
+      storeCode = storeCode.trim();
+
+      // ============================================================
+      // SAFETY CHECK
+      // ============================================================
+
+      if (storeCode.isEmpty) {
+        await _clearSavedSession();
+
+        isCheckingLogin = false;
+
+        _showMessage("Store code is missing for this account", isError: true);
+
+        return;
+      }
+
+      // ============================================================
+      // REFRESH LOCAL SESSION
+      // ============================================================
+
+      await prefs.setString("username", username);
+
+      await prefs.setString("role", role.toString());
+
+      await prefs.setString("storeCode", storeCode);
+
+      debugPrint("=================================");
+      debugPrint("AUTO LOGIN SUCCESS");
+      debugPrint("USERNAME: $username");
+      debugPrint("ROLE: $role");
+      debugPrint("STORE CODE: $storeCode");
+      debugPrint("DEVICE ID: $deviceId");
+      debugPrint("=================================");
+
+      isCheckingLogin = false;
+
+      if (!mounted) return;
+
+      // ============================================================
+      // STORE
+      // ============================================================
+
+      if (isStore || role == "store") {
+        await _showWelcomeScreen(
+          username: username,
+          nextPage: StoreInventoryScreen(
+            storeCode: storeCode,
+            expireDate: expireDate,
+          ),
+        );
+
+        return;
+      }
+
+      // ============================================================
+      // PHARMACY
+      // ============================================================
+
+      await _showWelcomeScreen(
+        username: username,
+        nextPage: MainMenuScreen(
+          storeCode: storeCode,
+          expireDate: expireDate,
+          role: role.toString(),
+          username: username,
+        ),
+      );
+    } catch (e, stackTrace) {
+      debugPrint("AUTO LOGIN ERROR: $e");
+      debugPrint(stackTrace.toString());
+
+      // ============================================================
+      // IMPORTANT
+      // ============================================================
+      //
+      // لو مفيش إنترنت وقت فتح البرنامج:
+      // لا نمسح الـ session.
+      //
+      // نخلي المستخدم على Login screen.
+      // وفي المرة القادمة يحاول Auto Login مرة أخرى.
+      //
+      isCheckingLogin = false;
+
+      if (!mounted) return;
+
+      _showMessage(
+        "Unable to restore login. Please login again.",
+        isError: true,
+      );
+    }
+  }
+
+  // ================================================================
+  // CLEAR SAVED SESSION
+  // ================================================================
+
+  Future<void> _clearSavedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove("username");
+    await prefs.remove("role");
+    await prefs.remove("storeCode");
+
+    // IMPORTANT:
+    // Do NOT remove deviceId.
+    //
+    // deviceId belongs to this physical installation
+    // and is used by the maxDevices system.
+  }
+
+  // ================================================================
+  // MAX DEVICES PARSER
+  // ================================================================
+
+  int _parseMaxDevices(dynamic value) {
+    int maxDevices = 1;
+
+    if (value is int) {
+      maxDevices = value;
+    } else if (value is num) {
+      maxDevices = value.toInt();
+    } else if (value is String) {
+      maxDevices = int.tryParse(value) ?? 1;
+    }
+
+    if (maxDevices < 1) {
+      maxDevices = 1;
+    }
+
+    return maxDevices;
   }
 
   // ================================================================
@@ -966,29 +1191,6 @@ class _HomescreenState extends State<Homescreen>
   }
 
   // ================================================================
-  // CHECK LOGIN
-  // ================================================================
-
-  Future<void> checkLogin() async {
-    if (isCheckingLogin) return;
-
-    isCheckingLogin = true;
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      final savedUser = prefs.getString("username");
-
-      debugPrint("Saved username: $savedUser");
-
-      // لا ندخل تلقائياً حالياً.
-      // المستخدم يعمل Login كل مرة.
-    } finally {
-      isCheckingLogin = false;
-    }
-  }
-
-  // ================================================================
   // GET DEVICE ID
   // ================================================================
 
@@ -1040,6 +1242,10 @@ class _HomescreenState extends State<Homescreen>
     return true;
   }
 }
+
+// ===================================================================
+// WELCOME SCREEN
+// ===================================================================
 
 class _WelcomeScreen extends StatefulWidget {
   final String username;
@@ -1135,7 +1341,9 @@ class _WelcomeScreenState extends State<_WelcomeScreen>
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 28),
+
                   const Text(
                     'Welcome',
                     style: TextStyle(
@@ -1144,7 +1352,9 @@ class _WelcomeScreenState extends State<_WelcomeScreen>
                       color: _HomescreenState.darkText,
                     ),
                   ),
+
                   const SizedBox(height: 8),
+
                   Text(
                     widget.username,
                     textAlign: TextAlign.center,
@@ -1154,7 +1364,9 @@ class _WelcomeScreenState extends State<_WelcomeScreen>
                       color: _HomescreenState.omanGreen,
                     ),
                   ),
+
                   const SizedBox(height: 10),
+
                   Text(
                     'Login successful',
                     style: TextStyle(
