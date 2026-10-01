@@ -31,7 +31,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   static const Color omanRed = Color(0xffC8102E);
   static const Color omanGreen = Color(0xff009A44);
   static const Color omanWhite = Colors.white;
-
+  static const Color textDark = Color(0xff202124);
   static const Color backgroundColor = Color(0xfff5f7f8);
   static const Color textColor = Color(0xff172033);
 
@@ -123,7 +123,15 @@ class _MainMenuScreenState extends State<MainMenuScreen>
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
 
+    // Clear login session
+    await prefs.remove('isLoggedIn');
     await prefs.remove('username');
+    await prefs.remove('role');
+    await prefs.remove('storeCode');
+
+    // IMPORTANT:
+    // Do NOT remove deviceId.
+    // It must remain fixed for the maxDevices system.
 
     if (!mounted) return;
 
@@ -648,7 +656,7 @@ class _MainMenuScreenState extends State<MainMenuScreen>
           icon: Icons.search_rounded,
           title: "Drug Eye",
           subtitle: "Search drug information",
-          color: const Color(0xff3F51B5),
+          color: omanRed,
           onTap: () {
             Navigator.push(
               context,

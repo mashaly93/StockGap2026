@@ -7,12 +7,13 @@ import 'firebase/firebase_options.dart';
 import 'screens/Homescreen.dart';
 import 'screens/OrderScreen.dart';
 import 'screens/drug_search_screen.dart';
-import 'screens/main_menu_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   // Initialize Hive Cache
   await Hive.initFlutter();
@@ -33,14 +34,18 @@ class MyApp extends StatelessWidget {
 
       title: "StockGap",
 
-      home: const MainMenuScreen(storeCode: '', expireDate: null, role: '', username: '',),
+      // IMPORTANT:
+      // Login screen must always be the first screen
+      home: const Homescreen(),
 
       routes: {
-        Homescreen.routeName: (context) => Homescreen(),
+        Homescreen.routeName: (context) => const Homescreen(),
 
-        OrderScreen.routeName: (context) => OrderScreen(storeCode: ''),
+        OrderScreen.routeName: (context) =>
+            OrderScreen(storeCode: ''),
 
-        DrugSearchScreen.routeName: (context) => const DrugSearchScreen(),
+        DrugSearchScreen.routeName: (context) =>
+        const DrugSearchScreen(),
       },
     );
   }
